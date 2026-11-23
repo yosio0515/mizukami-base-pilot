@@ -28,11 +28,16 @@
     for (const [id, p] of players) {
       if (!p.el) {
         p.el = make('div','character'); p.dot = make('div','dot');
+        p.rig = make('div','avatar-rig');
+        for (const side of ['left','right']) {
+          p.rig.append(make('span',`limb arm ${side}`),make('span',`limb leg ${side}`));
+        }
+        p.rig.append(p.dot);
         p.img = document.createElement('img'); p.img.alt=''; p.img.hidden=true; p.dot.append(p.img);
         p.tag = make('div','tag'); p.bubbles = make('div','bubbles');
-        p.el.append(p.bubbles,p.dot,p.tag); $('characters').append(p.el);
+        p.el.append(p.bubbles,p.rig,p.tag); $('characters').append(p.el);
       }
-      p.el.className = 'character ' + (id === myId ? 'mine' : 'other');
+      p.el.className = 'character ' + (id === myId ? 'mine' : 'other') + ((p.movingUntil || 0) > performance.now() ? ' moving' : '');
       p.el.style.left = (p.x * 100) + '%'; p.el.style.top = (p.y * 100) + '%';
       p.tag.textContent = id === myId ? `${p.name}（自分）` : p.name;
       if (p.lastAvatar !== p.avatar) {
@@ -44,6 +49,7 @@
   }
   function updatePlayer(data) {
     const p = players.get(data.id) || {x:.5,y:.5,name:'参加者',avatar:null};
+    if (data.type === 'move' && data.id !== myId && typeof data.x === 'number' && typeof data.y === 'number' && Math.hypot(data.x-p.x,data.y-p.y) > .0001) p.movingUntil=performance.now()+210;
     if (typeof data.x === 'number') p.x=data.x;
     if (typeof data.y === 'number') p.y=data.y;
     if (typeof data.name === 'string') p.name=data.name;
@@ -122,10 +128,19 @@
     } else return;
     const d=Math.hypot(dx,dy);if(!d)return;
     const step=Math.min(speed*dt,d);
+    p.movingUntil=now+145;
     p.x=Math.max(.075,Math.min(.925,p.x+dx/d*step));p.y=Math.max(.14,Math.min(.86,p.y+dy/d*step));
     if(walkTarget && Math.hypot(walkTarget.x-p.x,walkTarget.y-p.y)<.008)walkTarget=null;
     render();send({type:'move',x:p.x,y:p.y});
   },50);
+
+  // Clear walking animation shortly after the last movement packet.
+  setInterval(() => {
+    const t=performance.now();
+    for (const p of players.values()) {
+      if(p.el && p.el.classList.contains('moving') && (p.movingUntil || 0) <= t) p.el.classList.remove('moving');
+    }
+  },100);
 
   // Local image cropper. Source JPEG/PNG never leaves the device: only a compressed 128px JPEG does.
   const preview=$('crop-preview'),ctx=preview.getContext('2d');

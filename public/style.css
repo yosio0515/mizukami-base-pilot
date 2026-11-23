@@ -47,3 +47,31 @@ main{display:block}
 .character .bubble:nth-child(even){transform:translateX(-28px)}
 .character .bubble:last-child::after{content:'';position:absolute;bottom:-8px;left:50%;width:12px;height:12px;background:inherit;transform:translateX(-50%) rotate(45deg);border-radius:2px}
 @media(max-width:760px){.character{min-width:106px}.character .dot{width:106px;height:106px}.character .bubbles{bottom:141px;max-width:min(210px,75vw)}.character .bubble{font-size:12px;max-width:190px}.character .bubble:nth-child(odd){transform:translateX(18px)}.character .bubble:nth-child(even){transform:translateX(-18px)}}
+
+
+/* v1.5 — 70% avatar size, animated tiny arms and legs while moving */
+.character{--avatar-diameter:92px;min-width:calc(var(--avatar-diameter) + 30px)}
+.character .avatar-rig{position:relative;width:calc(var(--avatar-diameter) + 30px);height:calc(var(--avatar-diameter) + 22px);flex:none;isolation:isolate}
+.character .avatar-rig .dot{position:absolute;top:0;left:50%;transform:translateX(-50%);width:var(--avatar-diameter);height:var(--avatar-diameter);z-index:2;border-width:3px}
+.character .limb{position:absolute;display:block;background:#d2e9e2;border:2px solid #365b60;box-shadow:0 2px 4px #0004;z-index:1}
+.character.other .limb{background:#8abebd}
+.character .arm{width:13px;height:30px;border-radius:9px;top:calc(var(--avatar-diameter) * .47);transform-origin:50% 8%}
+.character .arm.left{left:3px;transform:rotate(24deg)}
+.character .arm.right{right:3px;transform:rotate(-24deg)}
+.character .leg{width:15px;height:29px;border-radius:9px;top:calc(var(--avatar-diameter) - 10px);transform-origin:50% 3%}
+.character .leg.left{left:calc(50% - 22px)}
+.character .leg.right{right:calc(50% - 22px)}
+.character.moving .arm.left{animation:base-arm-left .38s ease-in-out infinite alternate}
+.character.moving .arm.right{animation:base-arm-right .38s ease-in-out infinite alternate}
+.character.moving .leg.left{animation:base-step-left .32s ease-in-out infinite alternate}
+.character.moving .leg.right{animation:base-step-right .32s ease-in-out infinite alternate}
+.character.moving .avatar-rig .dot{animation:base-bob .32s ease-in-out infinite alternate}
+@keyframes base-arm-left{from{transform:rotate(40deg)}to{transform:rotate(-28deg)}}
+@keyframes base-arm-right{from{transform:rotate(-40deg)}to{transform:rotate(28deg)}}
+@keyframes base-step-left{from{transform:rotate(-30deg)}to{transform:rotate(30deg)}}
+@keyframes base-step-right{from{transform:rotate(30deg)}to{transform:rotate(-30deg)}}
+@keyframes base-bob{from{transform:translate(-50%,0)}to{transform:translate(-50%,-3px)}}
+.character .bubbles{bottom:calc(var(--avatar-diameter) + 57px)}
+.character .tag{margin-top:5px}
+@media(max-width:760px){.character{--avatar-diameter:74px;min-width:calc(var(--avatar-diameter) + 30px)}.character .avatar-rig .dot{width:var(--avatar-diameter);height:var(--avatar-diameter)}.character .bubbles{bottom:calc(var(--avatar-diameter) + 53px)}}
+@media(prefers-reduced-motion:reduce){.character.moving .limb,.character.moving .avatar-rig .dot{animation:none}}
