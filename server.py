@@ -7,11 +7,14 @@ import os
 import re
 import secrets
 import time
+import random
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
 ROOT = Path(__file__).resolve().parent
 ROOMS = {}
+WORLD = {}  # Room-scoped, in-memory demo state. Resets on restart.
+DRAW_LIMIT = 1500
 MAX_CHAT = 80
 MAX_PLAYERS = 10
 MAX_AVATAR_BYTES = 24000
@@ -31,11 +34,14 @@ async def ws_handler(request):
     if secret and not secrets.compare_digest(request.query.get('password', ''), secret):
         return web.Response(status=403, text='Incorrect room password')
     room = ROOMS.setdefault(room_id, {})
+    world = WORLD.setdefault(room_id, {'homes': {}, 'strokes': []})
     if len(room) >= MAX_PLAYERS:
         return web.Response(status=409, text='This room is full (10 participants)')
     ws = web.WebSocketResponse(heartbeat=30, max_msg_size=65536)
     await ws.prepare(request)
     player_id = secrets.token_hex(8)
+    owner_token = request.query.get('owner','')
+    owner_id = ('owner-' + owner_token) if re.fullmatch(r'[a-f0-9]{24,40}',owner_token) else player_id
     slot = len(room)
     # Spread new participants across two rows to avoid ten dots stacking.
     spawn_x = 0.15 + (slot % 5) * 0.175
@@ -52,10 +58,13 @@ async def ws_handler(request):
                     pass
 
     try:
-        await ws.send_json({'type': 'welcome', 'id': player_id, 'players': [{'id': pid, 'x': p['x'], 'y': p['y'], 'name': p['name'], 'avatar': p['avatar']} for pid, p in room.items()]})
+        await ws.send_json({'type': 'welcome', 'id': player_id, 'players': [{'id': pid, 'x': p['x'], 'y': p['y'], 'name': p['name'], 'avatar': p['avatar']} for pid, p in room.items()], 'world': {'homes': world['homes'], 'strokes': world['strokes']}})
         await send_all({'type': 'join', 'id': player_id, 'x': room[player_id]['x'], 'y': room[player_id]['y'], 'name': '参加者', 'avatar': None})
         last_movement = 0
         last_chat = 0
+        last_fish = 0
+        last_draw = 0
+        last_home = 0
         async for event in ws:
             if event.type != WSMsgType.TEXT:
                 if event.type == WSMsgType.ERROR:
@@ -95,6 +104,59 @@ async def ws_handler(request):
                     continue
                 last_chat = now
                 await send_all({'type': 'chat', 'id': player_id, 'text': msg, 'at': int(time.time() * 1000)})
+            elif kind == 'fish' and now - last_fish >= 2.6:
+                # Server chooses fish so everyone sees the same catch.
+                last_fish = now
+                r = random.random()
+                if r < .70:
+                    fish = '小さな魚'
+                elif r < .955:
+                    fish = '中くらいの魚'
+                elif r < .997:
+                    fish = 'マグロ'
+                else:
+                    fish = 'シーラカンス'
+                await send_all({'type':'fish_result','id':player_id,'fish':fish})
+            elif kind == 'home' and now - last_home >= .6:
+                pos = data.get('pos')
+                if pos is not None:
+                    if not isinstance(pos, dict):
+                        continue
+                    try:
+                        hx = float(pos['x']); hy = float(pos['y'])
+                    except (KeyError, ValueError, TypeError):
+                        continue
+                    if not (.04 <= hx <= .95 and .14 <= hy <= .91):
+                        continue
+                    pos = {'x':round(hx,4),'y':round(hy,4)}
+                last_home = now
+                if pos is None:
+                    world['homes'].pop(owner_id, None)
+                else:
+                    pos['name'] = room[player_id]['name']
+                    world['homes'][owner_id] = pos
+                await send_all({'type':'home','id':owner_id,'pos':pos})
+            elif kind == 'draw' and now - last_draw >= .012:
+                points = data.get('points')
+                color = data.get('color')
+                if color not in ('#e24b45','#326fcb','#242b36') or not isinstance(points,list) or len(points) != 4:
+                    continue
+                try:
+                    coords = [float(v) for v in points]
+                except (ValueError, TypeError):
+                    continue
+                if not all(0 <= v <= 1 for v in coords):
+                    continue
+                last_draw = now
+                stroke = {'points':[round(v,4) for v in coords], 'color':color}
+                world['strokes'].append(stroke)
+                if len(world['strokes']) > DRAW_LIMIT:
+                    world['strokes'] = world['strokes'][-DRAW_LIMIT:]
+                await send_all({'type':'draw','stroke':stroke})
+            elif kind == 'clear_canvas' and now - last_home >= 2:
+                last_home = now
+                world['strokes'] = []
+                await send_all({'type':'clear_canvas'})
             elif kind == 'avatar':
                 avatar = data.get('avatar')
                 if avatar is not None:
@@ -114,12 +176,16 @@ async def ws_handler(request):
                     name = name.strip()[:16] or '参加者'
                     room[player_id]['name'] = name
                     await send_all({'type': 'name', 'id': player_id, 'name': name})
+                    if owner_id in world['homes']:
+                        world['homes'][owner_id]['name'] = name
+                        await send_all({'type':'home','id':owner_id,'pos':world['homes'][owner_id]})
     finally:
         room.pop(player_id, None)
         if room:
             await send_all({'type': 'leave', 'id': player_id})
         else:
             ROOMS.pop(room_id, None)
+            # Houses and shared drawing remain in memory while the server lives.
     return ws
 
 app = web.Application()
