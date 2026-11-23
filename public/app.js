@@ -68,7 +68,12 @@
         myId=data.id;players.clear();$('characters').replaceChildren();data.players.forEach(updatePlayer);
         send({type:'name',name:profile.name});send({type:'avatar',avatar:profile.avatar});
       }
-      if(['join','move','name','avatar'].includes(data.type))updatePlayer(data);
+      if (['join','move','name','avatar'].includes(data.type)) {
+        // Movement is predicted locally. Server echoes may arrive 100-300ms later;
+        // applying them to ourselves would repeatedly snap us backwards.
+        if (data.type === 'move' && data.id === myId) return;
+        updatePlayer(data);
+      }
       if(data.type==='leave'){const p=players.get(data.id);p?.el?.remove();players.delete(data.id);render();}
       if(data.type==='chat')talk(data);
     });
