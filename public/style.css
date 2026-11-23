@@ -94,3 +94,34 @@ main{display:block}
 .map-note{width:min(900px,100%);margin:11px auto 0;padding:10px 14px;border-radius:12px;background:#173643d9;border:1px solid #487375;color:#cfe7d7;font-size:12px;line-height:1.6;text-align:center}
 .field-caption span{text-transform:none}
 @media(max-width:760px){.poi{font-size:11px;padding:6px 9px}.poi-kosen{left:38%;top:29%}.poi-mizukami{left:80%;top:48%}.map-note{font-size:11px;padding:9px 10px}}
+
+/* v1.7 — simple sandbox meadow */
+.field.map-field{background:#89ca75;}
+.field.map-field .map-layer.meadow{background-color:#93cc83;background-image:radial-gradient(circle at 15% 20%,#b4e497aa 0 11%,transparent 11.5%),radial-gradient(circle at 76% 76%,#76b96d88 0 14%,transparent 14.5%),radial-gradient(circle at 46% 39%,#b8dfa077 0 11%,transparent 12%),radial-gradient(circle at 91% 20%,#79ba7180 0 9%,transparent 10%),radial-gradient(circle at 35% 80%,#b1db9977 0 13%,transparent 14%),repeating-linear-gradient(65deg,transparent 0 49px,#e1efbd24 50px 52px);filter:none;opacity:1}
+.field.map-field .grid-bg{opacity:.12;pointer-events:none}
+.field-caption{z-index:3}
+.water-pond{position:absolute;top:9%;right:7%;width:30%;height:37%;z-index:1;border:9px solid #dbcd88;border-radius:57% 43% 53% 47% / 48% 56% 44% 52%;background:repeating-radial-gradient(ellipse at 45% 43%,#84cce6,#84cce6 8px,#66b6d9 12px,#75c7e6 17px);box-shadow:0 4px 0 #589657,0 0 0 11px #7fbd63;display:grid;place-items:center;cursor:pointer;color:#255679;font-weight:800;text-shadow:0 1px white}
+.water-pond span{padding:5px 12px;background:#eafafaab;border-radius:999px}
+.wildflower{position:absolute;font-size:33px;color:#ffe498;z-index:1;text-shadow:2px 2px 0 #84a557;pointer-events:none}
+.flower-a{left:9%;top:28%}.flower-b{left:63%;bottom:17%;color:#fae5fa}.flower-c{left:39%;top:13%;color:#fff5b0}
+.world-toolbar{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin:12px auto 0}
+.world-toolbar button{cursor:pointer;border-radius:12px;border:1px solid #5b9a85;padding:10px 15px;background:#e4f6d5;color:#244736;font-weight:700}
+.world-toolbar button:hover{background:#c2e8b7}.world-toolbar button:disabled{opacity:.6;cursor:wait}
+.fishing-notice{margin:6px auto 0;text-align:center;min-height:25px;color:#b0f6d7;font-weight:700;font-size:14px}
+#homes{position:absolute;inset:0;z-index:2;pointer-events:none}
+.little-house{position:absolute;width:68px;height:72px;transform:translate(-50%,-78%);filter:drop-shadow(2px 7px 3px #325b3f66)}
+.house-roof{position:absolute;top:1px;left:2px;width:64px;height:30px;background:#a65436;clip-path:polygon(50% 0,100% 75%,100% 100%,0 100%,0 75%);border-bottom:4px solid #6f3e2b}
+.house-body{position:absolute;left:9px;top:23px;width:50px;height:35px;background:repeating-linear-gradient(0deg,#a97b51 0 7px,#7a4c2d 8px 10px);border:2px solid #583f2c;border-radius:2px}
+.house-door{position:absolute;left:30px;top:37px;width:16px;height:21px;border:2px solid #694529;background:#d4b780;border-radius:5px 5px 0 0}
+.house-name{position:absolute;top:63px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:11px;color:#244a34;font-weight:800;background:#fff9dfed;border-radius:7px;padding:2px 6px}
+.world-facilities{position:absolute;inset:0;z-index:3;pointer-events:none}
+.art-spot{pointer-events:auto;position:absolute;left:20%;top:22%;border:3px solid #826340;background:#fff6db;color:#57452f;border-radius:14px;padding:10px 14px;font-weight:800;box-shadow:0 5px 0 #8c6b3b;cursor:pointer}
+.map-field.placing-home{cursor:copy!important;outline:4px dashed #eafaa5;outline-offset:-5px}
+.art-backdrop{position:fixed;inset:0;z-index:150;background:#0a1c20d9;display:grid;place-items:center;padding:12px}
+.art-backdrop[hidden]{display:none}
+.art-card{width:min(820px,100%);max-height:95vh;overflow:auto;background:#eaf1de;border:3px solid #90af86;border-radius:18px;color:#233d33;padding:17px;box-shadow:0 18px 90px #0008}
+.art-header{display:flex;justify-content:space-between;align-items:center}.art-header h2{margin:0;font-size:21px}.art-header button{font-size:25px;background:transparent;border:0;color:#28483d;cursor:pointer}
+.art-card p{font-size:13px;color:#456453}.art-tools{display:flex;align-items:center;gap:9px;margin:12px 0}.art-color{border:3px solid transparent;font-size:26px;background:white;border-radius:12px;padding:6px;cursor:pointer}.art-color.selected{border-color:#3d986b}.art-clear{margin-left:auto;border:1px solid #b89d8b;border-radius:9px;padding:9px;background:#fff;color:#674237;cursor:pointer}
+#draw-canvas{width:100%;height:auto;aspect-ratio:720/430;background:#fffefa;touch-action:none;border:3px solid #b7c5a6;border-radius:8px;cursor:crosshair;display:block}
+.art-card small{color:#687b6d;display:block;margin-top:9px}
+@media(max-width:760px){.world-toolbar button{flex:1 1 46%;padding:10px 6px;font-size:12px}.water-pond{width:36%;height:31%;right:3%}.water-pond span{font-size:11px}.art-spot{left:7%;top:18%;font-size:11px;padding:8px}.little-house{transform:translate(-50%,-70%) scale(.76)}.art-card{padding:12px}.art-header h2{font-size:18px}}

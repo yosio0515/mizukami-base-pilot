@@ -10,6 +10,12 @@
   const password = params.get('password') || '';
   const $ = id => document.getElementById(id);
   const storageKey = 'mizukami-base-profile-v1';
+  let ownerToken = localStorage.getItem('mizukami-base-house-owner');
+  if(!ownerToken || !/^[a-f0-9]{32}$/.test(ownerToken)) {
+    ownerToken=Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toString(16).padStart(2,'0')).join('');
+    try{localStorage.setItem('mizukami-base-house-owner',ownerToken);}catch(_){}
+  }
+  const ownerId='owner-'+ownerToken;
   let profile = {name:'ゲスト',avatar:null};
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
@@ -26,90 +32,6 @@
   let myId = null, ws = null, active = new Set(), connected = false;
   const make = (tag, className, text) => { const el = document.createElement(tag); el.className = className; if (text != null) el.textContent = text; return el; };
   const status = (label, online) => { $('status').textContent = label; $('status').className = 'status ' + (online ? 'online' : 'offline'); };
-
-  const roadLines = [
-    [[0.17,0.27],[0.17,0.44],[0.17,0.61]],
-    [[0.17,0.61],[0.29,0.61],[0.40,0.60],[0.54,0.58],[0.69,0.58],[0.82,0.60]],
-    [[0.40,0.39],[0.40,0.60],[0.43,0.78]],
-    [[0.54,0.41],[0.54,0.58],[0.58,0.78]],
-    [[0.69,0.44],[0.69,0.58],[0.78,0.79]],
-    [[0.82,0.44],[0.82,0.60],[0.84,0.86]],
-    [[0.37,0.34],[0.46,0.41],[0.54,0.41],[0.69,0.44],[0.82,0.44]],
-    [[0.29,0.61],[0.31,0.70],[0.22,0.83],[0.10,0.82]],
-    [[0.43,0.78],[0.58,0.78],[0.78,0.79],[0.90,0.88]],
-    [[0.37,0.34],[0.39,0.28],[0.48,0.28]],
-    [[0.69,0.44],[0.73,0.27],[0.86,0.18]]
-  ];
-  function buildRoadGraph(lines, step=.02){
-    const nodes = [];
-    const adjacency = new Map();
-    const byKey = new Map();
-    const getId = (x, y) => {
-      const key = `${x.toFixed(4)},${y.toFixed(4)}`;
-      if (!byKey.has(key)) {
-        const id = nodes.length;
-        nodes.push({x, y});
-        adjacency.set(id, new Set());
-        byKey.set(key, id);
-      }
-      return byKey.get(key);
-    };
-    for (const line of lines) {
-      let prevId = null;
-      for (let i = 0; i < line.length - 1; i++) {
-        const [x1,y1] = line[i], [x2,y2] = line[i+1];
-        const dist = Math.hypot(x2-x1, y2-y1);
-        const parts = Math.max(1, Math.ceil(dist / step));
-        for (let j = 0; j <= parts; j++) {
-          if (i > 0 && j === 0) continue;
-          const t = j / parts;
-          const x = x1 + (x2-x1)*t;
-          const y = y1 + (y2-y1)*t;
-          const id = getId(x, y);
-          if (prevId != null && prevId !== id) {
-            adjacency.get(prevId).add(id);
-            adjacency.get(id).add(prevId);
-          }
-          prevId = id;
-        }
-      }
-    }
-    return {nodes, adjacency};
-  }
-  const roadGraph = buildRoadGraph(roadLines, .018);
-  function nearestRoadNode(x, y) {
-    let best = 0, bestDist = Infinity;
-    roadGraph.nodes.forEach((node, index) => {
-      const d = (node.x-x)*(node.x-x) + (node.y-y)*(node.y-y);
-      if (d < bestDist) { bestDist = d; best = index; }
-    });
-    return best;
-  }
-  function shortestRoadPath(startId, endId) {
-    if (startId === endId) return [startId];
-    const prev = new Map([[startId, null]]);
-    const queue = [startId];
-    for (let head = 0; head < queue.length; head++) {
-      const id = queue[head];
-      if (id === endId) break;
-      for (const next of roadGraph.adjacency.get(id) || []) {
-        if (prev.has(next)) continue;
-        prev.set(next, id);
-        queue.push(next);
-      }
-    }
-    if (!prev.has(endId)) return [startId];
-    const ids = [];
-    for (let cur = endId; cur != null; cur = prev.get(cur)) ids.push(cur);
-    return ids.reverse();
-  }
-  function roadPoint(id){ return roadGraph.nodes[id]; }
-  function snapPlayerToRoad(player){
-    const id = nearestRoadNode(player.x, player.y);
-    const point = roadPoint(id);
-    player.x = point.x; player.y = point.y;
-    return id;
-  }
 
   function setMapMessage(text) {
     const note = $('map-note');
@@ -163,35 +85,17 @@
   }
   function send(data){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-  let walkRoute = [];
-  function routeToRoadTarget(targetX, targetY) {
-    if (!myId || !players.has(myId)) return;
-    const p = players.get(myId);
-    const startId = nearestRoadNode(p.x, p.y);
-    const endId = nearestRoadNode(targetX, targetY);
-    const routeIds = shortestRoadPath(startId, endId);
-    walkRoute = routeIds.slice(1).map(id => ({...roadPoint(id)}));
-    if (!walkRoute.length) {
-      const same = roadPoint(endId);
-      walkRoute = [{x: same.x, y: same.y}];
-    }
-  }
-
   function connect(){
     status('接続中…',false);
     const proto = location.protocol==='https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${proto}//${location.host}/ws?room=${encodeURIComponent(room)}&password=${encodeURIComponent(password)}`);
+    ws = new WebSocket(`${proto}//${location.host}/ws?room=${encodeURIComponent(room)}&password=${encodeURIComponent(password)}&owner=${ownerToken}`);
     ws.addEventListener('open',()=>{ connected = true; status('オンライン',true); });
     ws.addEventListener('message',event=>{
       let data; try{ data = JSON.parse(event.data); } catch { return; }
       if(data.type==='welcome'){
         myId = data.id; players.clear(); $('characters').replaceChildren(); data.players.forEach(updatePlayer);
-        if (players.has(myId)) {
-          const me = players.get(myId);
-          snapPlayerToRoad(me);
-          render();
-          send({type:'move',x:me.x,y:me.y});
-        }
+        homes.clear(); Object.entries(data.world?.homes || {}).forEach(([id,pos])=>updateHome(id,pos));
+        strokes.length=0; (data.world?.strokes || []).forEach(stroke=>strokes.push(stroke)); redrawCanvas();
         send({type:'name',name:profile.name}); send({type:'avatar',avatar:profile.avatar});
       }
       if (['join','move','name','avatar'].includes(data.type)) {
@@ -200,6 +104,11 @@
       }
       if(data.type==='leave'){ const p = players.get(data.id); p?.el?.remove(); players.delete(data.id); render(); }
       if(data.type==='chat') talk(data);
+      if(data.type==='home') updateHome(data.id,data.pos);
+      if(data.type==='draw') addStroke(data.stroke);
+      if(data.type==='clear_canvas') {strokes.length=0; redrawCanvas();}
+      if(data.type==='fish_result') showCatch(data);
+
     });
     ws.addEventListener('close',()=>{ connected=false; status('オフライン / 入室上限の可能性あり',false); players.clear(); $('characters').replaceChildren(); render(); });
     ws.addEventListener('error',()=>status('接続できません',false));
@@ -233,15 +142,17 @@
   });
 
   const field = $('field');
-  field.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || !connected || !myId) return;
-    if (e.target.closest('button, input, .character')) return;
-    const bounds = field.getBoundingClientRect();
-    const targetX = Math.max(.06, Math.min(.94, (e.clientX - bounds.left)/bounds.width));
-    const targetY = Math.max(.10, Math.min(.90, (e.clientY - bounds.top)/bounds.height));
-    routeToRoadTarget(targetX, targetY);
+  let walkTarget = null, placingHome = false;
+  function endPlacement(){ placingHome=false; field.classList.remove('placing-home'); $('home-button').textContent='🏡 家を置く／引っ越す'; }
+  field.addEventListener('pointerdown',e=>{
+    if(e.button !== 0 || !connected || !myId) return;
+    if(e.target.closest('button, input, .character')) return;
+    const bounds=field.getBoundingClientRect();
+    const x=Math.max(.05,Math.min(.95,(e.clientX-bounds.left)/bounds.width));
+    const y=Math.max(.12,Math.min(.88,(e.clientY-bounds.top)/bounds.height));
+    if(placingHome){ send({type:'home',pos:{x,y}}); updateHome(ownerId,{x,y,name:profile.name}); endPlacement(); setMapMessage('ログハウスを設置したよ！何度でも引っ越せます。'); }
+    else walkTarget={x,y};
   });
-
   let last = performance.now();
   setInterval(()=>{
     const now = performance.now(), dt = Math.min((now-last)/1000,.1); last = now;
@@ -249,24 +160,18 @@
     const p = players.get(myId), speed = .34;
     let dx = 0, dy = 0;
     if (active.size) {
-      walkRoute = [];
-      for (const key of active) {
-        const v = keys[key]; if (v) { dx += v[0]; dy += v[1]; }
-      }
-    } else if (walkRoute.length) {
-      dx = walkRoute[0].x - p.x; dy = walkRoute[0].y - p.y;
-      if (Math.hypot(dx,dy) < .008) {
-        walkRoute.shift();
-        if (!walkRoute.length) return;
-        dx = walkRoute[0].x - p.x; dy = walkRoute[0].y - p.y;
-      }
+      walkTarget=null;
+      for(const key of active){const v=keys[key];if(v){dx+=v[0];dy+=v[1];}}
+    } else if(walkTarget) {
+      dx=walkTarget.x-p.x;dy=walkTarget.y-p.y;
+      if(Math.hypot(dx,dy)<.008){walkTarget=null;return;}
     } else return;
     const d = Math.hypot(dx,dy); if (!d) return;
     const step = Math.min(speed*dt, d);
     p.movingUntil = now + 145;
     p.x = Math.max(.05, Math.min(.95, p.x + dx/d*step));
     p.y = Math.max(.10, Math.min(.90, p.y + dy/d*step));
-    if (walkRoute.length && Math.hypot(walkRoute[0].x-p.x, walkRoute[0].y-p.y) < .008) walkRoute.shift();
+    if(walkTarget && Math.hypot(walkTarget.x-p.x, walkTarget.y-p.y)<.008)walkTarget=null;
     render(); send({type:'move',x:p.x,y:p.y});
   },50);
 
@@ -329,5 +234,92 @@
     if(profile.avatar) image.src=profile.avatar; else image.removeAttribute('src');
     $('profile-placeholder').hidden=!!profile.avatar;
   }
+
+  // Mini activities: server-selected fishing result, portable cabins and shared artwork.
+  const homes=new Map(), strokes=[];
+  function updateHome(id,pos){
+    const layer=$('homes');
+    let house=homes.get(id);
+    if(!pos){house?.remove();homes.delete(id);return;}
+    if(!house){
+      house=document.createElement('div');house.className='little-house';
+      const roof=make('span','house-roof','');
+      const body=make('span','house-body','');
+      const door=make('span','house-door','');
+      const name=make('span','house-name','');
+      house.append(roof,body,door,name);layer.append(house);homes.set(id,house);
+    }
+    house.style.left=(pos.x*100)+'%';house.style.top=(pos.y*100)+'%';
+    house.querySelector('.house-name').textContent=(pos.name || players.get(id)?.name || 'だれか')+'の家';
+  }
+  $('home-button').addEventListener('click',()=>{
+    if(!connected)return setMapMessage('オンラインにつながってから家を置いてね。');
+    placingHome=!placingHome;field.classList.toggle('placing-home',placingHome);
+    $('home-button').textContent=placingHome?'キャンセル（配置中）':'🏡 家を置く／引っ越す';
+    setMapMessage(placingHome?'好きな土地をクリックしてログハウスを置いてね！':'家の配置をキャンセルしたよ。');
+  });
+  $('home-remove').addEventListener('click',()=>{
+    if(!connected || !myId)return;
+    send({type:'home',pos:null});updateHome(ownerId,null);endPlacement();setMapMessage('ログハウスを収納したよ。いつでもまた置けます！');
+  });
+  function showCatch(data){
+    const found=({ '小さな魚':'🐟', '中くらいの魚':'🐠', 'マグロ':'🐟', 'シーラカンス':'🦕' })[data.fish] || '🐟';
+    const player=players.get(data.id);
+    const name=player?.name || 'だれか';
+    const mine=data.id===myId;
+    const msg=`${found} ${name}が「${data.fish}」を釣り上げた！${data.fish==='シーラカンス'?' 超激レア！！':''}`;
+    $('fishing-notice').textContent=msg;
+    clearTimeout(showCatch.timer);showCatch.timer=setTimeout(()=>$('fishing-notice').textContent='',4500);
+    if(player){ talk({id:data.id,text:`${found} ${data.fish} ゲット！`}); }
+    if(mine){$('fish-button').textContent='🎣 さかなを釣る';$('fish-button').disabled=false;}
+  }
+  $('fish-button').addEventListener('click',()=>{
+    if(!connected)return setMapMessage('オンラインにつながってから釣ってね。');
+    const button=$('fish-button');button.disabled=true;button.textContent='🎣 ウキがピクピク…';
+    $('fishing-notice').textContent='水面がゆらゆら……';
+    setTimeout(()=>{
+      if(connected)send({type:'fish'});
+      setTimeout(()=>{if(button.disabled){button.disabled=false;button.textContent='🎣 さかなを釣る';}},1800);
+    },950);
+  });
+  $('pond').addEventListener('click',()=> $('fish-button').click());
+
+  const artDialog=$('art-dialog'),canvas=$('draw-canvas'),dc=canvas.getContext('2d');
+  let selectedColor='#e24b45',drawing=false,lastPoint=null;
+  function drawStroke(stroke){
+    if(!stroke || !Array.isArray(stroke.points) || stroke.points.length!==4)return;
+    const [x1,y1,x2,y2]=stroke.points;
+    dc.lineWidth=4;dc.lineCap='round';dc.lineJoin='round';dc.strokeStyle=stroke.color;
+    dc.beginPath();dc.moveTo(x1*canvas.width,y1*canvas.height);dc.lineTo(x2*canvas.width,y2*canvas.height);dc.stroke();
+  }
+  function redrawCanvas(){dc.fillStyle='#fffefa';dc.fillRect(0,0,canvas.width,canvas.height);strokes.forEach(drawStroke);}
+  function addStroke(stroke){
+    strokes.push(stroke);if(strokes.length>1500)strokes.shift();
+    if(!artDialog.hidden)drawStroke(stroke);
+  }
+  function openArt(){artDialog.hidden=false;redrawCanvas();}
+  function closeArt(){artDialog.hidden=true;drawing=false;}
+  $('art-button').addEventListener('click',openArt);
+  $('art-spot').addEventListener('click',openArt);
+  $('art-close').addEventListener('click',closeArt);
+  artDialog.addEventListener('pointerdown',e=>{if(e.target===artDialog)closeArt();});
+  document.querySelectorAll('.art-color').forEach(button=>button.addEventListener('click',()=>{
+    selectedColor=button.dataset.color;document.querySelectorAll('.art-color').forEach(b=>b.classList.toggle('selected',b===button));
+  }));
+  $('art-clear').addEventListener('click',()=>{
+    if(!connected)return;
+    if(confirm('みんなのキャンバスを真っ白に戻しますか？'))send({type:'clear_canvas'});
+  });
+  function localPoint(e){const r=canvas.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))};}
+  canvas.addEventListener('pointerdown',e=>{if(!connected)return;e.preventDefault();drawing=true;lastPoint=localPoint(e);canvas.setPointerCapture(e.pointerId);});
+  canvas.addEventListener('pointermove',e=>{
+    if(!drawing || !connected)return;
+    e.preventDefault();const next=localPoint(e);const stroke={color:selectedColor,points:[lastPoint.x,lastPoint.y,next.x,next.y]};
+    if(Math.hypot(next.x-lastPoint.x,next.y-lastPoint.y)<.001)return;
+    send({type:'draw',color:selectedColor,points:stroke.points});lastPoint=next;
+  });
+  for(const event of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(event,()=>{drawing=false;lastPoint=null;});
+  redrawCanvas();
+
   displayOwnAvatar(); connect();
 })();
