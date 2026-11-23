@@ -75,3 +75,22 @@ main{display:block}
 .character .tag{margin-top:5px}
 @media(max-width:760px){.character{--avatar-diameter:74px;min-width:calc(var(--avatar-diameter) + 30px)}.character .avatar-rig .dot{width:var(--avatar-diameter);height:var(--avatar-diameter)}.character .bubbles{bottom:calc(var(--avatar-diameter) + 53px)}}
 @media(prefers-reduced-motion:reduce){.character.moving .limb,.character.moving .avatar-rig .dot{animation:none}}
+
+
+/* v1.6 — Niihama map beta with more greenery and road-walk click routing */
+.field.map-field{position:relative;overflow:hidden;background:linear-gradient(180deg,#9edaf8 0%,#58bfdc 35%,#3d9fbe 100%)}
+.field.map-field .map-layer{position:absolute;inset:0;background:url('/static/niihama-map.png') center center/cover no-repeat;filter:saturate(1.04) contrast(1.02);opacity:.98}
+.field.map-field .grid-bg{background:linear-gradient(#ffffff18 1px,transparent 1px),linear-gradient(90deg,#ffffff18 1px,transparent 1px);background-size:32px 32px;mix-blend-mode:soft-light;opacity:.45}
+.field.map-field::before,.field.map-field::after{content:'';position:absolute;inset:auto;width:34%;height:28%;pointer-events:none;filter:blur(12px);opacity:.42;z-index:1}
+.field.map-field::before{left:-4%;bottom:-3%;background:radial-gradient(circle at 50% 50%,#7bc46a 0%,#5dae4e 35%,#2f793700 72%)}
+.field.map-field::after{right:-5%;top:-6%;background:radial-gradient(circle at 50% 50%,#9cd86f 0%,#6abc5e 35%,#2f793700 72%)}
+#characters,.field-caption,.empty,.poi-layer{z-index:2}
+.poi-layer{position:absolute;inset:0;pointer-events:none}
+.poi{position:absolute;pointer-events:auto;border:1px solid #4f7e6f;border-radius:999px;background:#f9f7ddf0;color:#214638;font-size:12px;font-weight:700;padding:7px 11px;box-shadow:0 6px 18px #10291e33;transform:translate(-50%,-50%);cursor:pointer}
+.poi:hover{transform:translate(-50%,-50%) scale(1.03)}
+.poi::before{content:'';position:absolute;left:50%;bottom:-7px;width:10px;height:10px;background:inherit;border-right:1px solid #4f7e6f;border-bottom:1px solid #4f7e6f;transform:translateX(-50%) rotate(45deg)}
+.poi-kosen{left:39%;top:29%}
+.poi-mizukami{left:80%;top:49%}
+.map-note{width:min(900px,100%);margin:11px auto 0;padding:10px 14px;border-radius:12px;background:#173643d9;border:1px solid #487375;color:#cfe7d7;font-size:12px;line-height:1.6;text-align:center}
+.field-caption span{text-transform:none}
+@media(max-width:760px){.poi{font-size:11px;padding:6px 9px}.poi-kosen{left:38%;top:29%}.poi-mizukami{left:80%;top:48%}.map-note{font-size:11px;padding:9px 10px}}
