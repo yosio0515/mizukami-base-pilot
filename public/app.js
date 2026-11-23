@@ -54,7 +54,7 @@
     const p=players.get(data.id);if(!p)return;
     const bubble=make('div','bubble',data.text);p.bubbles.append(bubble);
     while(p.bubbles.children.length>6)p.bubbles.firstChild.remove();
-    setTimeout(() => bubble.remove(), 15000);
+    setTimeout(() => bubble.remove(), 30000);
   }
   function send(data){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(data));}
   function connect(){
@@ -96,12 +96,34 @@
     button.addEventListener('pointerdown',e=>{e.preventDefault();active.add(key);button.setPointerCapture(e.pointerId);});
     ['pointerup','pointercancel','lostpointercapture'].forEach(event=>button.addEventListener(event,()=>active.delete(key)));
   });
+  // Click or tap an empty spot to walk toward it. Keyboard/pad takes priority.
+  let walkTarget = null;
+  const field = $('field');
+  field.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !connected || !myId) return;
+    if (e.target.closest('button, input, .character')) return;
+    const bounds = field.getBoundingClientRect();
+    walkTarget = {
+      x: Math.max(.075, Math.min(.925, (e.clientX-bounds.left)/bounds.width)),
+      y: Math.max(.14, Math.min(.86, (e.clientY-bounds.top)/bounds.height))
+    };
+  });
   let last=performance.now();setInterval(()=>{
     const now=performance.now(),dt=Math.min((now-last)/1000,.1);last=now;
-    if(!connected||!myId||!players.has(myId)||!active.size)return;
-    let dx=0,dy=0;for(const key of active){const v=keys[key];if(v){dx+=v[0];dy+=v[1];}}
-    if(!dx&&!dy)return;const d=Math.hypot(dx,dy),p=players.get(myId),speed=.38;
-    p.x=Math.max(.06,Math.min(.94,p.x+dx/d*speed*dt));p.y=Math.max(.12,Math.min(.88,p.y+dy/d*speed*dt));
+    if(!connected||!myId||!players.has(myId))return;
+    const p=players.get(myId),speed=.38;
+    let dx=0,dy=0;
+    if (active.size) {
+      walkTarget=null;
+      for(const key of active){const v=keys[key];if(v){dx+=v[0];dy+=v[1];}}
+    } else if(walkTarget) {
+      dx=walkTarget.x-p.x;dy=walkTarget.y-p.y;
+      if(Math.hypot(dx,dy) < .008){walkTarget=null;return;}
+    } else return;
+    const d=Math.hypot(dx,dy);if(!d)return;
+    const step=Math.min(speed*dt,d);
+    p.x=Math.max(.075,Math.min(.925,p.x+dx/d*step));p.y=Math.max(.14,Math.min(.86,p.y+dy/d*step));
+    if(walkTarget && Math.hypot(walkTarget.x-p.x,walkTarget.y-p.y)<.008)walkTarget=null;
     render();send({type:'move',x:p.x,y:p.y});
   },50);
 

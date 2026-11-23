@@ -35,3 +35,15 @@ main{display:block}
 #chat-form button{padding:0 22px;white-space:nowrap}
 .ephemeral-note{text-align:center;color:#8ac4ba;font-size:12px;margin-top:8px}
 @media(max-width:760px){.field{height:54vh;min-height:325px}.people-count{margin-left:0}#chat-form{margin-top:12px}#chat-form button{padding:0 13px}}
+
+/* v1.4 — large avatars, improved speech positioning and point-and-walk */
+.field{cursor:crosshair;touch-action:manipulation}
+.character{min-width:132px;pointer-events:none}
+.character .dot{width:132px;height:132px;flex-shrink:0;border-width:4px}
+.character .tag{font-size:13px;margin-top:8px;padding:5px 11px}
+.character .bubbles{bottom:170px;gap:7px;align-items:center;max-width:min(270px,72vw)}
+.character .bubble{position:relative;font-size:13px;line-height:1.5;padding:8px 13px;border-radius:15px;max-width:250px}
+.character .bubble:nth-child(odd){transform:translateX(28px)}
+.character .bubble:nth-child(even){transform:translateX(-28px)}
+.character .bubble:last-child::after{content:'';position:absolute;bottom:-8px;left:50%;width:12px;height:12px;background:inherit;transform:translateX(-50%) rotate(45deg);border-radius:2px}
+@media(max-width:760px){.character{min-width:106px}.character .dot{width:106px;height:106px}.character .bubbles{bottom:141px;max-width:min(210px,75vw)}.character .bubble{font-size:12px;max-width:190px}.character .bubble:nth-child(odd){transform:translateX(18px)}.character .bubble:nth-child(even){transform:translateX(-18px)}}
