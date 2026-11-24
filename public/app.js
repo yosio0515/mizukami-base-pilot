@@ -145,6 +145,63 @@ function draw(){cx=ctx;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,vw,vh
  if(placing){const x=avatar.x,y=avatar.y;label('🏡 空き地をクリック',x,y-95,'#567e60')}
  ctx.restore();drawMini();const near=nearestHub();$('loc').firstChild.textContent='📍 '+near.name+' 周辺';$('coords').textContent=`現在地 ${Math.round(avatar.x)}, ${Math.round(avatar.y)} / 広域 ${W}×${H}`
 }
+// Chat bubbles are rendered in CSS-screen pixels so they remain readable at any zoom.
+// Keep every player's six most recent unexpired bubbles, each in its own comic-style panel.
+function bubbleLines(text,maxWidth,fontPx=12){
+ cx.font=`${fontPx}px sans-serif`;
+ const out=[];
+ for(const paragraph of String(text).split('\n')){
+  let line='';
+  for(const glyph of Array.from(paragraph)){
+   if(line && cx.measureText(line+glyph).width>maxWidth){out.push(line);line=glyph;}
+   else line+=glyph;
+  }
+  out.push(line);
+ }
+ return out.length?out:[''];
+}
+function drawSpeechStack(x,y,playerId,isMe){
+ const now=performance.now();
+ const recent=messages.filter(m=>m.until>now&&(isMe?m.id===myId:m.id===playerId)).slice(-6);
+ if(!recent.length)return;
+ cx.save();
+ // Draw newest closest to the head, older ones above it. Never overlap the 48px avatar.
+ const screenX=x*zoom,screenY=y*zoom;
+ const fontPx=12, lineHeight=17, paddingX=11,paddingY=7,gap=9;
+ const maxBoxPx=Math.max(120,Math.min(220,vw*.42));
+ let liftedPx=61;
+ for(let index=recent.length-1;index>=0;index--){
+  const m=recent[index];
+  const lines=bubbleLines(m.text,maxBoxPx-paddingX*2,fontPx);
+  const longest=Math.max(0,...lines.map(t=>cx.measureText(t).width));
+  const widthPx=Math.min(maxBoxPx,Math.max(60,longest+paddingX*2));
+  const heightPx=lines.length*lineHeight+paddingY*2;
+  const stagger=index%2===0?-13:13;
+  const bxPx=screenX-widthPx/2+stagger;
+  const byPx=screenY-liftedPx-heightPx;
+  // Convert screen-pixel geometry back to world space (canvas already zoomed).
+  const bx=bxPx/zoom,by=byPx/zoom,w=widthPx/zoom,h=heightPx/zoom;
+  cx.fillStyle='#fffdf3';cx.strokeStyle='#719e86';cx.lineWidth=1.4/zoom;
+  cx.shadowColor='#153e3560';cx.shadowBlur=7/zoom;cx.shadowOffsetY=3/zoom;
+  cx.beginPath();cx.roundRect(bx,by,w,h,10/zoom);cx.fill();cx.shadowColor='transparent';cx.stroke();
+  // Small comic tail points toward the next bubble / avatar.
+  const tailX=(screenX+(index%2===0?-5:7))/zoom;
+  const tailBase=by+h;
+  cx.fillStyle='#fffdf3';cx.beginPath();
+  cx.moveTo(tailX-6/zoom,tailBase-0.6/zoom);
+  cx.lineTo(tailX+5/zoom,tailBase-0.6/zoom);
+  cx.lineTo(tailX+1/zoom,tailBase+7/zoom);
+  cx.closePath();cx.fill();
+  cx.strokeStyle='#719e86';cx.lineWidth=1.1/zoom;
+  cx.beginPath();cx.moveTo(tailX-6/zoom,tailBase);
+  cx.lineTo(tailX+1/zoom,tailBase+7/zoom);
+  cx.lineTo(tailX+5/zoom,tailBase);cx.stroke();
+  cx.font=`${fontPx/zoom}px sans-serif`;cx.textBaseline='middle';cx.textAlign='center';cx.fillStyle='#29473b';
+  for(let j=0;j<lines.length;j++)cx.fillText(lines[j],bx+w/2,by+(paddingY+lineHeight*(j+.5))/zoom);
+  liftedPx+=heightPx+gap+7;
+ }
+ cx.restore();
+}
 const avatarCache=new Map();function drawAvatar(x,y,p,name){
  const size=48/zoom;ellipse(x+2,y+15/zoom,21/zoom,7/zoom,'#34584366');
  cx.save();cx.beginPath();cx.arc(x,y-20/zoom,size/2,0,Math.PI*2);cx.clip();
@@ -152,9 +209,7 @@ const avatarCache=new Map();function drawAvatar(x,y,p,name){
  if(p.avatar){let img=avatarCache.get(p.avatar);if(!img){img=new Image();img.src=p.avatar;avatarCache.set(p.avatar,img);if(avatarCache.size>32)avatarCache.delete(avatarCache.keys().next().value)}if(img.complete&&img.naturalWidth)cx.drawImage(img,x-size/2,y-20/zoom-size/2,size,size)}else{cx.font=`${28/zoom}px sans-serif`;cx.textAlign='center';cx.textBaseline='middle';cx.fillText('🙂',x,y-20/zoom)}cx.restore();
  cx.strokeStyle='#fff';cx.lineWidth=2/zoom;cx.beginPath();cx.arc(x,y-20/zoom,size/2,0,Math.PI*2);cx.stroke();
  cx.save();cx.font=`${12/zoom}px sans-serif`;cx.textAlign='center';cx.lineWidth=3/zoom;cx.strokeStyle='#203d35';cx.strokeText(name,x,y+20/zoom);cx.fillStyle='#fff';cx.fillText(name,x,y+20/zoom);cx.restore();
- const current=performance.now();for(const m of messages){if(m.id!==p.id&&!(m.id===myId&&x===avatar.x&&y===avatar.y))continue;if(m.until<current)continue;
- cx.save();cx.font=`${12/zoom}px sans-serif`;const width=Math.min(200,cx.measureText(m.text).width*zoom+24)/zoom,height=26/zoom,bx=x-width/2,by=y-60/zoom;
- cx.fillStyle='#fffff4';cx.strokeStyle='#8bbaa4';cx.lineWidth=1/zoom;cx.beginPath();cx.roundRect(bx,by,width,height,7/zoom);cx.fill();cx.stroke();cx.fillStyle='#31443b';cx.textAlign='center';cx.fillText(m.text.slice(0,80),x,by+17/zoom);cx.restore();}
+ drawSpeechStack(x,y,p.id,p.id===myId||(!p.id&&name.endsWith('（自分）')));
 }
 function drawMini(){const w=mini.width,h=mini.height;mc.clearRect(0,0,w,h);mc.fillStyle='#aad988';mc.fillRect(0,0,w,h);
  mc.fillStyle='#83c9ed';mc.fillRect(0,0,w,27);mc.fillStyle='#6ba978';mc.fillRect(0,h-27,w,27);
