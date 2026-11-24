@@ -33,14 +33,100 @@
   const make = (tag, className, text) => { const el = document.createElement(tag); el.className = className; if (text != null) el.textContent = text; return el; };
   const status = (label, online) => { $('status').textContent = label; $('status').className = 'status ' + (online ? 'online' : 'offline'); };
 
+  // World geometry is an intentionally coarse collision prototype drawn against
+  // the approved 2.5D concept image, not surveyed geographic data.
+  function inWaterOrMountain(x,y){
+    if(x<.025 || x>.975 || y<.245 || y>.81)return true;
+    const river1=.36+.012*Math.sin(15*y);
+    const river2=.685+.016*Math.sin(17*y);
+    const onBridge=Math.abs(y-.475)<.023 || Math.abs(y-.578)<.020;
+    if(!onBridge && (Math.abs(x-river1)<.014 || Math.abs(x-river2)<.015))return true;
+    return false;
+  }
+  const landmarkBlocks=[
+    [.22,.29,.19,.27], [.32,.39,.30,.37], [.55,.64,.22,.32],
+    [.69,.78,.29,.38], [.78,.87,.34,.43], [.17,.29,.48,.57],
+    [.76,.88,.49,.57], [.23,.32,.64,.75], [.76,.86,.64,.75]
+  ];
+  function isBlocked(x,y,ignoreLandmarks=false){
+    if(inWaterOrMountain(x,y))return true;
+    if(!ignoreLandmarks && landmarkBlocks.some(([l,r,t,b])=>x>=l&&x<=r&&y>=t&&y<=b))return true;
+    if(!ignoreLandmarks && typeof homes !== 'undefined' && [...homes.values()].some(el=>Math.hypot(Number(el.dataset.x)-x,Number(el.dataset.y)-y)<.032))return true;
+    return false;
+  }
+  function homeAllowed(x,y){
+    if(isBlocked(x,y))return false;
+    if(y<.29||y>.755)return false;
+    // Keep the main gravel road and the railway clear for everyone.
+    if(Math.abs(y-.473)<.031 || Math.abs(y-.58)<.030)return false;
+    if([...homes.values()].some(el=>Math.hypot(Number(el.dataset.x)-x,Number(el.dataset.y)-y)<.085))return false;
+    if([...players.values()].some(p=>Math.hypot(p.x-x,p.y-y)<.055))return false;
+    return true;
+  }
   function setMapMessage(text) {
     const note = $('map-note');
     if (!note) return;
     note.textContent = text;
     clearTimeout(setMapMessage.timer);
     setMapMessage.timer = setTimeout(() => {
-      note.textContent = 'β版マップ：クリック／タップ移動は道に沿って歩きます。建物ルーム移動は今後追加予定です。';
-    }, 5000);
+      note.textContent = '西条・新居浜マップβ：海・山・川は歩けません。道や草地をクリックして探索できます。';
+    }, 5300);
+  }
+  const mapWorld=$('map-world'),field=$('field');
+  let mapZoom=1.8, overviewMode=false;
+  const mapZoomOptions=[1,1.4,1.8,2.4,3.2];
+  function placeCamera(){
+    let x=.52,y=.53;
+    if(myId && players.has(myId)){ const p=players.get(myId);x=p.x;y=p.y; }
+    const w=field.clientWidth,h=field.clientHeight;
+    const tx=Math.max(w*(1-mapZoom),Math.min(0,w*.5-w*x*mapZoom));
+    const ty=Math.max(h*(1-mapZoom),Math.min(0,h*.5-h*y*mapZoom));
+    mapWorld.style.transform=`translate(${tx}px,${ty}px) scale(${mapZoom})`;
+    mapWorld.style.setProperty('--invzoom',String(1/mapZoom));
+    $('zoom-label').textContent=mapZoom.toFixed(1)+'×';
+  }
+  function changeZoom(delta){
+    let i=mapZoomOptions.indexOf(mapZoom);
+    if(i<0)i=2;
+    mapZoom=mapZoomOptions[Math.max(0,Math.min(mapZoomOptions.length-1,i+delta))];
+    overviewMode=mapZoom===1;placeCamera();
+  }
+  $('zoom-in').addEventListener('click',()=>changeZoom(1));
+  $('zoom-out').addEventListener('click',()=>changeZoom(-1));
+  $('overview').addEventListener('click',()=>{mapZoom=mapZoom===1?1.8:1;overviewMode=mapZoom===1;placeCamera();});
+  window.addEventListener('resize',placeCamera);
+  const gridSize=65;
+  const gridKey=(x,y)=>y*gridSize+x;
+  const gridPt=(x,y)=>({x:(x+.5)/gridSize,y:(y+.5)/gridSize});
+  function walkableGrid(x,y){const p=gridPt(x,y);return !isBlocked(p.x,p.y);}
+  function snapGrid(x,y){
+    let best=null,dist=Infinity;
+    for(let r=0;r<gridSize;r++)for(let c=0;c<gridSize;c++){
+      if(!walkableGrid(c,r))continue;
+      const t=gridPt(c,r),d=(x-t.x)**2+(y-t.y)**2;
+      if(d<dist){best={c,r};dist=d;}
+    }
+    return best;
+  }
+  function routeTo(x,y){
+    if(!myId || !players.has(myId))return [];
+    const me=players.get(myId),start=snapGrid(me.x,me.y),end=snapGrid(x,y);
+    if(!start || !end)return [];
+    const a=gridKey(start.c,start.r),b=gridKey(end.c,end.r);
+    const q=[a],parent=new Map([[a,-1]]);
+    for(let head=0;head<q.length;head++){
+      const id=q[head];if(id===b)break;
+      const c=id%gridSize,r=Math.floor(id/gridSize);
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nc=c+dx,nr=r+dy;
+        if(nc<0||nr<0||nc>=gridSize||nr>=gridSize||!walkableGrid(nc,nr))continue;
+        const nid=gridKey(nc,nr);if(parent.has(nid))continue;
+        parent.set(nid,id);q.push(nid);
+      }
+    }
+    if(!parent.has(b)){setMapMessage('そこへは道がつながっていないみたいや。別の場所を選んでね。');return [];}
+    const ids=[];for(let k=b;k!==-1;k=parent.get(k))ids.push(k);
+    ids.reverse();return ids.slice(1).map(id=>gridPt(id%gridSize,Math.floor(id/gridSize)));
   }
 
   function render() {
@@ -67,6 +153,7 @@
         else { p.img.removeAttribute('src'); p.img.hidden = true; p.dot.classList.remove('has-photo'); }
       }
     }
+    placeCamera();
   }
   function updatePlayer(data) {
     const p = players.get(data.id) || {x:.5,y:.5,name:'参加者',avatar:null};
@@ -105,6 +192,7 @@
       if(data.type==='leave'){ const p = players.get(data.id); p?.el?.remove(); players.delete(data.id); render(); }
       if(data.type==='chat') talk(data);
       if(data.type==='home') updateHome(data.id,data.pos);
+      if(data.type==='home_error') setMapMessage(data.message || 'ここには家を置けません。');
       if(data.type==='draw') addStroke(data.stroke);
       if(data.type==='clear_canvas') {strokes.length=0; redrawCanvas();}
       if(data.type==='fish_result') showCatch(data);
@@ -141,38 +229,49 @@
     ['pointerup','pointercancel','lostpointercapture'].forEach(event=>button.addEventListener(event,()=>active.delete(key)));
   });
 
-  const field = $('field');
-  let walkTarget = null, placingHome = false;
-  function endPlacement(){ placingHome=false; field.classList.remove('placing-home'); $('home-button').textContent='🏡 家を置く／引っ越す'; }
+  let walkRoute=[],placingHome=false;
+  function endPlacement(){placingHome=false;field.classList.remove('placing-home');$('home-button').textContent='🏡 家を置く／引っ越す';}
   field.addEventListener('pointerdown',e=>{
-    if(e.button !== 0 || !connected || !myId) return;
-    if(e.target.closest('button, input, .character')) return;
-    const bounds=field.getBoundingClientRect();
-    const x=Math.max(.05,Math.min(.95,(e.clientX-bounds.left)/bounds.width));
-    const y=Math.max(.12,Math.min(.88,(e.clientY-bounds.top)/bounds.height));
-    if(placingHome){ send({type:'home',pos:{x,y}}); updateHome(ownerId,{x,y,name:profile.name}); endPlacement(); setMapMessage('ログハウスを設置したよ！何度でも引っ越せます。'); }
-    else walkTarget={x,y};
+    if(e.button!==0 || !connected || !myId)return;
+    if(e.target.closest('button, input, .character'))return;
+    const b=mapWorld.getBoundingClientRect();
+    const x=Math.max(0,Math.min(1,(e.clientX-b.left)/b.width));
+    const y=Math.max(0,Math.min(1,(e.clientY-b.top)/b.height));
+    if(placingHome){
+      if(!homeAllowed(x,y))return setMapMessage('ここには建てられないで！海・山・線路・道路・施設は避けてね。');
+      send({type:'home',pos:{x,y}});
+      // The server confirms placement before showing it to all players.
+      endPlacement();setMapMessage('ログハウスを設置中…');
+    }else{
+      if(isBlocked(x,y))setMapMessage('そこは通れない場所。近くの歩ける場所まで向かうで！');
+      walkRoute=routeTo(x,y);
+    }
   });
-  let last = performance.now();
+  let last=performance.now();
   setInterval(()=>{
-    const now = performance.now(), dt = Math.min((now-last)/1000,.1); last = now;
-    if(!connected || !myId || !players.has(myId)) return;
-    const p = players.get(myId), speed = .34;
-    let dx = 0, dy = 0;
-    if (active.size) {
-      walkTarget=null;
+    const now=performance.now(),dt=Math.min((now-last)/1000,.1);last=now;
+    if(!connected || !myId || !players.has(myId))return;
+    const p=players.get(myId),speed=.22;
+    let dx=0,dy=0;
+    if(active.size){
+      walkRoute=[];
       for(const key of active){const v=keys[key];if(v){dx+=v[0];dy+=v[1];}}
-    } else if(walkTarget) {
-      dx=walkTarget.x-p.x;dy=walkTarget.y-p.y;
-      if(Math.hypot(dx,dy)<.008){walkTarget=null;return;}
-    } else return;
-    const d = Math.hypot(dx,dy); if (!d) return;
-    const step = Math.min(speed*dt, d);
-    p.movingUntil = now + 145;
-    p.x = Math.max(.05, Math.min(.95, p.x + dx/d*step));
-    p.y = Math.max(.10, Math.min(.90, p.y + dy/d*step));
-    if(walkTarget && Math.hypot(walkTarget.x-p.x, walkTarget.y-p.y)<.008)walkTarget=null;
-    render(); send({type:'move',x:p.x,y:p.y});
+    }else if(walkRoute.length){
+      let guard=0;
+      while(walkRoute.length && Math.hypot(walkRoute[0].x-p.x,walkRoute[0].y-p.y)<.009 && guard++<8)walkRoute.shift();
+      if(!walkRoute.length)return;
+      dx=walkRoute[0].x-p.x;dy=walkRoute[0].y-p.y;
+    }else return;
+    const d=Math.hypot(dx,dy);if(!d)return;
+    const step=Math.min(speed*dt,d);
+    const nx=p.x+dx/d*step,ny=p.y+dy/d*step;
+    if(!isBlocked(nx,ny)){p.x=nx;p.y=ny;}
+    else if(!walkRoute.length){
+      if(!isBlocked(nx,p.y))p.x=nx;
+      else if(!isBlocked(p.x,ny))p.y=ny;
+      else return;
+    }else{walkRoute=[];setMapMessage('ここは通れないみたい。別の道を選んでね。');return;}
+    p.movingUntil=now+145;render();send({type:'move',x:p.x,y:p.y});
   },50);
 
   setInterval(() => {
@@ -249,7 +348,7 @@
       const name=make('span','house-name','');
       house.append(roof,body,door,name);layer.append(house);homes.set(id,house);
     }
-    house.style.left=(pos.x*100)+'%';house.style.top=(pos.y*100)+'%';
+    house.style.left=(pos.x*100)+'%';house.style.top=(pos.y*100)+'%';house.dataset.x=pos.x;house.dataset.y=pos.y;
     house.querySelector('.house-name').textContent=(pos.name || players.get(id)?.name || 'だれか')+'の家';
   }
   $('home-button').addEventListener('click',()=>{
@@ -321,5 +420,5 @@
   for(const event of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(event,()=>{drawing=false;lastPoint=null;});
   redrawCanvas();
 
-  displayOwnAvatar(); connect();
+  placeCamera(); displayOwnAvatar(); connect();
 })();
