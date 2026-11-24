@@ -11,6 +11,7 @@ import random
 import math
 from pathlib import Path
 from aiohttp import web, WSMsgType
+from board_api import register as register_boards
 
 ROOT = Path(__file__).resolve().parent
 ROOMS = {}
@@ -237,6 +238,7 @@ async def ws_handler(request):
 
 app = web.Application()
 app.router.add_get('/', index)
+register_boards(app)
 app.router.add_get('/health', health)
 app.router.add_get('/ws', ws_handler)
 app.router.add_static('/static/', ROOT / 'public', show_index=False)
