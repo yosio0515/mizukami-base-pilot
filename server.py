@@ -22,40 +22,63 @@ MAX_PLAYERS = 10
 MAX_AVATAR_BYTES = 24000
 ROOM_RE = re.compile(r'^[a-zA-Z0-9_-]{1,32}$')
 
-# v1.8: approximate map geometry; replace with polygon/tile collision masks in v2.x.
-LANDMARK_BLOCKS = (
-    (.22,.29,.19,.27), (.32,.39,.30,.37), (.55,.64,.22,.32),
-    (.69,.78,.29,.38), (.78,.87,.34,.43), (.17,.29,.48,.57),
-    (.76,.88,.49,.57), (.23,.32,.64,.75), (.76,.86,.64,.75),
+# v2.2: coordinates are normalized across the 7800x4800 wide-world canvas.
+WORLD_W, WORLD_H = 7800.0, 4800.0
+HUBS = ((1550,1950,155,145,125),(3960,2310,155,145,125),(6390,1900,155,145,125),(4300,1030,325,155,165))
+BRIDGES = (1540,2660,3650)
+GRAVEL = (
+ ((1550,2075),(1600,2390),(1850,2650),(2500,2700),(3200,2670),(3940,2700),(4620,2700),(5450,2630),(6390,2060)),
+ ((3900,2710),(3890,2100),(4140,1650),(4300,1230)),
+ ((1500,1950),(1770,1800),(2070,1630),(2400,1540),(3000,1630),(3500,1740),(4110,1760),(4630,1810),(5280,1670),(5920,1770),(6350,1890)),
+ ((450,3460),(1400,3510),(2550,3530),(4000,3450),(5600,3490),(7000,3530)),
+ ((1800,3530),(1900,3000),(1800,2730)),
+ ((6200,3500),(6140,2900),(6380,2190)),
+ ((4200,3510),(4360,2880)),
 )
 
-def blocked(x, y):
-    if not (.025 <= x <= .975 and .245 <= y <= .81):
-        return True
-    bridge = abs(y-.475) < .023 or abs(y-.578) < .020
-    if not bridge and (abs(x-(.36+.012*math.sin(15*y))) < .014
-                       or abs(x-(.685+.016*math.sin(17*y))) < .015):
-        return True
-    return any(l <= x <= r and t <= y <= b for l,r,t,b in LANDMARK_BLOCKS)
+def road_at(x,y): return abs(y-(2850+55*math.sin(x*.0009))) < 58
 
-def can_build(x, y, homes, owner_id, room=None):
-    if blocked(x,y) or not (.29 <= y <= .755):
+def gravel_at(x,y):
+    for line in GRAVEL:
+        for (ax,ay),(bx,by) in zip(line,line[1:]):
+            vx,vy=bx-ax,by-ay
+            t=max(0,min(1,((x-ax)*vx+(y-ay)*vy)/(vx*vx+vy*vy or 1)))
+            if math.hypot(x-(ax+vx*t),y-(ay+vy*t))<33:
+                return True
+    return False
+
+def blocked(x,y):
+    xx,yy=x*WORLD_W,y*WORLD_H
+    if xx<35 or xx>WORLD_W-35 or yy<40 or yy>WORLD_H-40:
+        return True
+    if yy<470+42*math.sin(xx*.0013)+37*math.cos(xx*.0036):return True
+    if yy>4200+150*math.sin(xx*.0014)+95*math.sin(xx*.004):return True
+    on_bridge=any(abs(yy-v)<70 for v in BRIDGES)
+    if not on_bridge and any(abs(xx-((2520 if i==0 else 5540)+125*math.sin(yy*.002+i*1.7)+42*math.sin(yy*.006+i)))<52 for i in (0,1)):
+        return True
+    for hx,hy,half,top,bottom in HUBS:
+        if hx-half-25<xx<hx+half+25 and hy-top-25<yy<hy+bottom+25:
+            return True
+    return False
+
+def can_build(x,y,homes,owner_id,room=None):
+    xx,yy=x*WORLD_W,y*WORLD_H
+    if blocked(x,y) or yy<650 or road_at(xx,yy) or gravel_at(xx,yy):
         return False
-    if abs(y-.473)<.031 or abs(y-.58)<.030:
+    if any(hx-half-235<xx<hx+half+235 and hy-top-235<yy<hy+bottom+235 for hx,hy,half,top,bottom in HUBS):
         return False
-    if room and any(math.hypot(x-p['x'],y-p['y']) < .055 for p in room.values()):
+    if any(math.hypot((x-h['x'])*WORLD_W,(y-h['y'])*WORLD_H)<170 for hid,h in homes.items() if hid!=owner_id):
         return False
-    for hid,h in homes.items():
-        if hid != owner_id and math.hypot(x-h['x'],y-h['y']) < .085:
-            return False
+    if room and any(math.hypot((x-p['x'])*WORLD_W,(y-p['y'])*WORLD_H)<70 for p in room.values()):
+        return False
     return True
 
 def segment_passable(x1,y1,x2,y2,homes=None):
-    d=math.hypot(x2-x1,y2-y1)
-    for i in range(1,max(2,math.ceil(d/.005))+1):
-        t=i/max(2,math.ceil(d/.005))
-        x=x1+(x2-x1)*t; y=y1+(y2-y1)*t
-        if blocked(x,y) or (homes and any(math.hypot(x-h['x'],y-h['y']) < .032 for h in homes.values())):
+    d=math.hypot((x2-x1)*WORLD_W,(y2-y1)*WORLD_H)
+    count=max(2,math.ceil(d/16))
+    for i in range(1,count+1):
+        t=i/count;x=x1+(x2-x1)*t;y=y1+(y2-y1)*t
+        if blocked(x,y) or (homes and any(math.hypot((x-h['x'])*WORLD_W,(y-h['y'])*WORLD_H)<75 for h in homes.values())):
             return False
     return True
 
@@ -66,7 +89,7 @@ async def health(request):
     return web.json_response({'ok': True, 'active_rooms': len(ROOMS)})
 
 async def ws_handler(request):
-    room_id = request.query.get('room', 'demo')
+    room_id = request.query.get('room', 'main')
     if not ROOM_RE.fullmatch(room_id):
         return web.Response(status=400, text='Invalid room')
     secret = os.environ.get('ROOM_PASSWORD', '')
@@ -82,15 +105,11 @@ async def ws_handler(request):
     owner_token = request.query.get('owner','')
     owner_id = ('owner-' + owner_token) if re.fullmatch(r'[a-f0-9]{24,40}',owner_token) else player_id
     slot = len(room)
-    # Spread new participants across two rows to avoid ten dots stacking.
-    spawn_x = 0.15 + (slot % 5) * 0.175
-    spawn_y = 0.36 if slot < 5 else 0.64
-    # Spawn players on land and outside protected landmark footprints.
-    if blocked(spawn_x, spawn_y):
-        for candidate_y in (.41, .64, .68, .52, .72):
-            if not blocked(spawn_x,candidate_y):
-                spawn_y=candidate_y
-                break
+    # Start everyone on the shared crossroads near Mizukami Paint.
+    spawn_x = (3790 + (slot%5)*42)/WORLD_W
+    spawn_y = (2720 + (slot//5)*50)/WORLD_H
+    if blocked(spawn_x,spawn_y):
+        spawn_x,spawn_y = 3900/WORLD_W,2720/WORLD_H
     room[player_id] = {'ws': ws, 'x': spawn_x, 'y': spawn_y, 'name': '参加者', 'avatar': None}
 
     async def send_all(data):
@@ -135,7 +154,7 @@ async def ws_handler(request):
                     break
                 # Limit speed to ~0.65 arena widths per second, with some latency allowance.
                 delta = max(.025, min(now - last_movement if last_movement else .05, .15))
-                if ((x-p['x'])**2 + (y-p['y'])**2) ** .5 > .65 * delta + .035:
+                if math.hypot((x-p['x'])*WORLD_W,(y-p['y'])*WORLD_H) > 125 * delta + 22:
                     continue
                 if not segment_passable(p['x'],p['y'],x,y,world['homes']):
                     continue
