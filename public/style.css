@@ -151,3 +151,39 @@ main{display:block}
 .map-field.placing-home{outline:4px dashed #f7f8a8;outline-offset:-5px}
 .map-note{margin-top:10px}
 @media(max-width:760px){.field.map-field .field-caption{top:57px;font-size:11px;padding:5px 9px}.map-hud{top:8px;right:8px}.map-hud button{font-size:11px}.map-world .character{transform:translate(-50%,-50%) scale(var(--invzoom))}.map-world .little-house{transform:translate(-50%,-78%) scale(var(--invzoom))}}
+
+/* v1.8.1 — avoid camera/character position desync and excess head bob */
+/* Camera and player's coordinates must update in the same frame; a 55ms CSS
+   interpolation against a 50ms simulation tick creates the visible wobble. */
+.map-world .character{transition:none!important;}
+/* Keep the arms/legs walking, but keep the avatar face locked in place. */
+.map-world .character.moving .avatar-rig .dot{animation:none!important;}
+
+/* v1.9 bulletin boards at both city halls */
+.map-world .board-saijo{left:25%;top:35%}.map-world .board-niihama{left:72%;top:41%}
+.map-world .board-hotspot{background:#fff0c8;color:#594322;border-color:#a8794a;z-index:12}
+.board-backdrop{position:fixed;inset:0;z-index:300;display:grid;place-items:center;padding:12px;background:#07151bdf;color:#20372e}
+.board-backdrop[hidden]{display:none}
+.board-card{width:min(800px,100%);max-height:96vh;overflow:auto;border-radius:18px;background:#f5f5e9;border:3px solid #91b79e;padding:19px;box-shadow:0 25px 85px #0009}
+.board-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.board-header small{color:#507667}.board-header h2{font-size:23px;margin:4px 0 6px;color:#264e3c}.board-header button{font-size:29px;background:transparent;border:0;color:#405d52;cursor:pointer}
+.board-help{font-size:13px;color:#5b7167;line-height:1.6}
+.board-form{background:#fff;border:1px solid #c2d9c1;padding:13px;border-radius:13px;display:flex;flex-direction:column;gap:8px}
+.board-form label{font-weight:700;font-size:13px}.board-form textarea{resize:vertical;font-size:14px;font-family:inherit;min-height:72px;box-sizing:border-box;width:100%;border:1px solid #9bb6a6;border-radius:9px;padding:10px;color:#243a31;background:#fff}
+.board-input-row,.board-form-footer{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;font-size:12px;color:#6e8176}
+.board-file-label{display:inline-block;padding:8px 10px;border-radius:8px;background:#e5f3e9;border:1px solid #a2c6a9;cursor:pointer}
+.board-preview,.board-post-images{display:flex;gap:7px;flex-wrap:wrap}
+.board-preview img{width:75px;height:75px;object-fit:cover;border-radius:8px;border:1px solid #9fbaaa}
+.board-form-footer button{padding:10px 13px;border:0;border-radius:9px;background:#2b805e;color:white;font-weight:bold;cursor:pointer}
+.board-form-footer button:disabled{opacity:.6;cursor:wait}.board-status{min-height:18px;color:#ad4733;font-size:12px}
+.board-list-title{display:flex;align-items:center;justify-content:space-between;margin:13px 0 8px}.board-list-title button,#board-more{border:1px solid #b7cbbf;border-radius:7px;background:#fff;padding:7px 11px;cursor:pointer;color:#31594a}
+.board-posts{display:flex;flex-direction:column;gap:12px}
+.board-post{padding:13px;border-radius:13px;border:1px solid #d4e0d2;background:#fff}
+.board-post-meta{display:flex;justify-content:space-between;gap:9px;flex-wrap:wrap;font-size:12px;color:#628073}
+.board-post-body{font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;margin:9px 0;color:#273b31}
+.board-post-images img{width:120px;height:110px;object-fit:cover;border:1px solid #c2d7c7;border-radius:8px;cursor:pointer}
+.board-post-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.board-post-actions button{font-size:12px;border:1px solid #bacdbd;background:#edf6ef;color:#315845;border-radius:8px;padding:7px 10px;cursor:pointer}
+.board-post-actions button:disabled{opacity:.45;cursor:not-allowed}
+.board-post-actions button.delete{color:#aa5149;background:#fff0ec}
+.board-caution{color:#8b6957;font-size:11px;line-height:1.5}
+@media(max-width:760px){.board-card{padding:11px}.board-header h2{font-size:18px}.board-post-images img{width:88px;height:88px}.board-form-footer small{font-size:10px}.map-world .board-hotspot{font-size:10px;padding:6px}}

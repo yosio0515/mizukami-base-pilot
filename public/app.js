@@ -81,7 +81,12 @@
     const w=field.clientWidth,h=field.clientHeight;
     const tx=Math.max(w*(1-mapZoom),Math.min(0,w*.5-w*x*mapZoom));
     const ty=Math.max(h*(1-mapZoom),Math.min(0,h*.5-h*y*mapZoom));
-    mapWorld.style.transform=`translate(${tx}px,${ty}px) scale(${mapZoom})`;
+    // Render position and camera from the same authoritative local position.
+    // Use compositor-friendly transform and snap fractional pixel jitter.
+    const pixelRatio=window.devicePixelRatio || 1;
+    const stableX=Math.round(tx*pixelRatio)/pixelRatio;
+    const stableY=Math.round(ty*pixelRatio)/pixelRatio;
+    mapWorld.style.transform=`translate3d(${stableX}px,${stableY}px,0) scale(${mapZoom})`;
     mapWorld.style.setProperty('--invzoom',String(1/mapZoom));
     $('zoom-label').textContent=mapZoom.toFixed(1)+'×';
   }
@@ -419,6 +424,181 @@
   });
   for(const event of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(event,()=>{drawing=false;lastPoint=null;});
   redrawCanvas();
+
+
+  // v1.9 Two city bulletin boards. Boards are global to all rooms.
+  const boardLabels={saijo:'西条市役所',niihama:'新居浜市役所'};
+  const boardDialog=$('board-dialog');
+  const boardPosts=$('board-posts');
+  const boardComment=$('board-comment');
+  const boardFiles=$('board-files');
+  let activeBoard=null, boardFilesSelected=[], boardNextBefore=null, boardLoaded=[];
+  const boardToken=ownerToken;
+  const boardOwnedKey='mizukami-board-own-posts-v1';
+  let boardOwned=[];try{boardOwned=JSON.parse(localStorage.getItem(boardOwnedKey)||'[]');if(!Array.isArray(boardOwned))boardOwned=[];}catch{boardOwned=[];}
+  function rememberOwnPost(id){boardOwned=[id,...boardOwned.filter(existing=>existing!==id)].slice(0,500);try{localStorage.setItem(boardOwnedKey,JSON.stringify(boardOwned));}catch{}}
+  const boardStatus=(message,error=false)=>{$('board-status').textContent=message;$('board-status').style.color=error?'#b04b42':'#287a58';};
+  const stamp=at=>new Date(at).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const boardLink=post=>`${location.origin}/?board=${encodeURIComponent(post.board)}&post=${encodeURIComponent(post.id)}`;
+  async function openBoard(board){
+    if(!boardLabels[board])return;
+    activeBoard=board;boardDialog.hidden=false;
+    $('board-title').textContent=`📌 ${boardLabels[board]} 掲示板`;
+    boardComment.value='';boardFiles.value='';boardFilesSelected=[];previewBoardFiles();boardStatus('');
+    await refreshBoard();
+  }
+  function closeBoard(){boardDialog.hidden=true;activeBoard=null;}
+  document.querySelectorAll('[data-board]').forEach(button=>button.addEventListener('click',()=>openBoard(button.dataset.board)));
+  $('board-close').addEventListener('click',closeBoard);
+  boardDialog.addEventListener('pointerdown',e=>{if(e.target===boardDialog)closeBoard();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!boardDialog.hidden)closeBoard();});
+  boardComment.addEventListener('input',()=>{$('board-counter').textContent=`${Array.from(boardComment.value).length} / 140文字`;});
+  function previewBoardFiles(){
+    const wrap=$('board-preview');wrap.replaceChildren();
+    for(const f of boardFilesSelected){const img=document.createElement('img');img.src=f.url;img.alt='添付予定';wrap.append(img);}
+  }
+  boardFiles.addEventListener('change',async()=>{
+    const inputs=[...boardFiles.files];
+    for(const f of boardFilesSelected)URL.revokeObjectURL(f.url);
+    boardFilesSelected=[];
+    if(inputs.length>3){boardStatus('画像は最大3枚までやで。',true);boardFiles.value='';return;}
+    for(const f of inputs){
+      if(!['image/jpeg','image/png','image/webp'].includes(f.type)||f.size>5*1024*1024){
+        boardStatus('画像はJPEG/PNG/WebP、1枚5MB以下でお願い！',true);boardFiles.value='';return;
+      }
+      boardFilesSelected.push({file:f,url:URL.createObjectURL(f)});
+    }
+    previewBoardFiles();boardStatus('');
+  });
+  async function compressBoardImage(file){
+    const src=URL.createObjectURL(file);
+    try{
+      const img=await new Promise((res,rej)=>{const image=new Image();image.onload=()=>res(image);image.onerror=()=>rej(new Error('画像を読み込めないよ'));image.src=src;});
+      if(img.naturalWidth*img.naturalHeight>20_000_000)throw new Error('画像の解像度が大きすぎるよ');
+      const maxSide=1280,scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+      const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+      const c=canvas.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,canvas.width,canvas.height);c.drawImage(img,0,0,canvas.width,canvas.height);
+      for(const quality of [.75,.6,.45]){
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));
+        if(blob&&blob.size<=230000){const buffer=await blob.arrayBuffer();const bytes=new Uint8Array(buffer);let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(binary);}
+      }
+      throw new Error('画像を軽くできなかったよ。別の画像を試してね');
+    }finally{URL.revokeObjectURL(src);}
+  }
+  async function apiBoard(path, options={}){
+    const response=await fetch(path,{cache:'no-store',...options});
+    if(!response.ok){let message;try{message=await response.text();}catch{};throw new Error(message||`通信エラー ${response.status}`);}
+    return response.json();
+  }
+  async function refreshBoard(before=null){
+    const board=activeBoard;if(!board)return;
+    boardStatus('読み込み中…');
+    try{
+      const url=`/api/boards/${board}/posts${before?`?before=${before}`:''}`;
+      const {posts}=await apiBoard(url);
+      if(activeBoard!==board)return;
+      boardLoaded=before?boardLoaded.concat(posts):posts;
+      boardNextBefore=posts.length===30?posts.at(-1).created_at:null;
+      $('board-more').hidden=!boardNextBefore;
+      renderBoardPosts();boardStatus('');
+    }catch(error){boardStatus('読み込めなかったよ：'+error.message,true);}
+  }
+  $('board-refresh').addEventListener('click',()=>refreshBoard());
+  $('board-more').addEventListener('click',()=>{if(boardNextBefore)refreshBoard(boardNextBefore);});
+  $('board-form').addEventListener('submit',async e=>{
+    e.preventDefault();if(!activeBoard)return;
+    const text=boardComment.value.trim();
+    if(Array.from(text).length>140||(!text&&!boardFilesSelected.length))return boardStatus('コメント140文字以内、または画像を選んでね。',true);
+    const button=$('board-submit');button.disabled=true;boardStatus('画像の軽量化・投稿中…');
+    try{
+      const images=[];for(const selection of boardFilesSelected)images.push(await compressBoardImage(selection.file));
+      const board=activeBoard;
+      const created=await apiBoard(`/api/boards/${board}/posts`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({author:profile.name,text,images,token:boardToken})});
+      rememberOwnPost(created.post.id);
+      boardComment.value='';$('board-counter').textContent='0 / 140文字';
+      boardFiles.value='';for(const selection of boardFilesSelected)URL.revokeObjectURL(selection.url);boardFilesSelected=[];previewBoardFiles();
+      await refreshBoard();boardStatus('投稿できたで！');
+    }catch(error){boardStatus(error.message,true);}finally{button.disabled=false;}
+  });
+  function shareX(post){
+    // X counts URLs separately; keep the 140-character post text intact and let the user attach a link when space permits.
+    const url='https://twitter.com/intent/tweet?text='+encodeURIComponent(post.text);
+    window.open(url,'_blank','noopener,noreferrer');
+  }
+  function shareLine(post){
+    const shareText=[post.text,boardLink(post)].filter(Boolean).join('\n');
+    window.open('https://line.me/R/msg/text/?'+encodeURIComponent(shareText),'_blank','noopener,noreferrer');
+  }
+  async function createInstagramCard(post){
+    const card=document.createElement('canvas');card.width=1080;card.height=1350;
+    const c=card.getContext('2d');
+    c.fillStyle='#f5eddd';c.fillRect(0,0,1080,1350);
+    c.fillStyle='#2c715b';c.fillRect(0,0,1080,130);c.fillStyle='#fff';c.font='bold 54px sans-serif';c.fillText('水上base',64,86);
+    c.fillStyle='#355c4e';c.font='bold 44px sans-serif';c.fillText(boardLabels[post.board]+' 掲示板',65,216);
+    let top=275;
+    if(post.images.length){
+      const image=await new Promise((resolve,reject)=>{const el=new Image();el.onload=()=>resolve(el);el.onerror=reject;el.src=post.images[0];});
+      const area={x:65,y:260,w:950,h:610};
+      const scale=Math.max(area.w/image.width,area.h/image.height);
+      const sw=area.w/scale,sh=area.h/scale;
+      c.save();c.beginPath();c.rect(area.x,area.y,area.w,area.h);c.clip();c.drawImage(image,(image.width-sw)/2,(image.height-sh)/2,sw,sh,area.x,area.y,area.w,area.h);c.restore();
+      top=930;
+    }
+    const fontSize=post.images.length?39:49; c.font=`${fontSize}px sans-serif`;c.fillStyle='#293c32';
+    const maxW=940,lineHeight=fontSize*1.55;let line='',y=top;
+    for(const char of post.text){
+      if(char==='\n'){c.fillText(line,70,y);y+=lineHeight;line='';continue;}
+      if(c.measureText(line+char).width>maxW){c.fillText(line,70,y);y+=lineHeight;line='';}
+      if(y>1180)break;line+=char;
+    }
+    if(line&&y<=1180)c.fillText(line,70,y);
+    c.fillStyle='#6d8175';c.font='31px sans-serif';c.fillText(`投稿：${post.author}　${stamp(post.created_at)}`,68,1285);
+    return await new Promise((resolve,reject)=>card.toBlob(blob=>blob?resolve(blob):reject(new Error('画像の作成に失敗')),'image/png'));
+  }
+  async function shareInstagram(post){
+    try{
+      const blob=await createInstagramCard(post);
+      const filename=`mizukami-board-${post.id}.png`;
+      const file=new File([blob],filename,{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})&&navigator.share){
+        try{await navigator.share({files:[file],title:'水上base 掲示板'});return;}catch(error){if(error.name==='AbortError')return;}
+      }
+      const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),6000);
+      await navigator.clipboard?.writeText(post.text).catch(()=>{});
+      boardStatus('Instagram用画像を保存したで！Instagramで画像を選んで、本文を貼り付けてね。');
+    }catch(error){boardStatus('共有画像の作成に失敗：'+error.message,true);}
+  }
+  function appendBoardAction(parent,label,callback,extra=''){
+    const button=make('button',extra,label);button.type='button';button.addEventListener('click',callback);parent.append(button);return button;
+  }
+  function renderBoardPosts(){
+    boardPosts.replaceChildren();
+    if(!boardLoaded.length){boardPosts.append(make('p','board-help','まだ書き込みがないで！最初の一言をどうぞ。'));return;}
+    for(const post of boardLoaded){
+      const article=make('article','board-post');
+      if(params.get('post')===post.id)article.style.outline='3px solid #78c9a2';
+      const meta=make('div','board-post-meta');meta.append(make('b','',post.author),make('span','',stamp(post.created_at)));
+      article.append(meta,make('p','board-post-body',post.text));
+      if(post.images.length){
+        const imgs=make('div','board-post-images');
+        for(const url of post.images){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';const img=document.createElement('img');img.src=url;img.alt='投稿の添付画像';img.loading='lazy';a.append(img);imgs.append(a);}
+        article.append(imgs);
+      }
+      const actions=make('div','board-post-actions');
+      appendBoardAction(actions,'X',()=>shareX(post));
+      appendBoardAction(actions,'LINE',()=>shareLine(post));
+      appendBoardAction(actions,'Instagram画像',()=>shareInstagram(post));
+      appendBoardAction(actions,'文章をコピー',async()=>{try{await navigator.clipboard.writeText(post.text);boardStatus('文章をコピーしたで！');}catch{boardStatus('コピーできませんでした。',true);}});
+      appendBoardAction(actions,'投稿リンク',async()=>{try{await navigator.clipboard.writeText(boardLink(post));boardStatus('投稿リンクをコピーしたで！');}catch{boardStatus('リンクをコピーできませんでした。',true);}});
+      if(boardOwned.includes(post.id)){appendBoardAction(actions,'自分の投稿を削除',async()=>{
+        if(!confirm('この投稿を削除していい？'))return;
+        try{await apiBoard(`/api/boards/${post.board}/posts/${post.id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:boardToken})});await refreshBoard();boardStatus('削除したで。');}
+        catch(e){boardStatus('削除できなかったよ：'+e.message,true);}
+      },'delete');}
+      article.append(actions);boardPosts.append(article);
+    }
+  }
+  if(boardLabels[params.get('board')])openBoard(params.get('board'));
 
   placeCamera(); displayOwnAvatar(); connect();
 })();
