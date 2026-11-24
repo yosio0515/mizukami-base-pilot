@@ -202,3 +202,6 @@ main{display:block}
 @media(max-width:760px){.character{--avatar-diameter:48px;min-width:60px}.character .avatar-rig{width:48px;height:48px}.character .avatar-rig .dot{width:48px;height:48px}.character .tag{font-size:10px}.character .bubbles{bottom:75px}.character .bubble{font-size:11px}}
 /* Map zoom is applied to .map-world; reciprocal zoom keeps the avatar 48 CSS px. */
 .map-world .character{transform:translate(-50%,-50%) scale(var(--invzoom));transition:none!important}
+
+/* v1.9.2: hide map helper strip unless a temporary action message is shown. */
+.map-note[hidden]{display:none!important}

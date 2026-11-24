@@ -67,9 +67,11 @@
     const note = $('map-note');
     if (!note) return;
     note.textContent = text;
+    note.hidden = false;
     clearTimeout(setMapMessage.timer);
     setMapMessage.timer = setTimeout(() => {
-      note.textContent = '西条・新居浜マップβ：海・山・川は歩けません。道や草地をクリックして探索できます。';
+      note.hidden = true;
+      note.textContent = '';
     }, 5300);
   }
   const mapWorld=$('map-world'),field=$('field');
