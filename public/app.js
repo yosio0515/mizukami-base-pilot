@@ -140,10 +140,8 @@
     for (const [id, p] of players) {
       if (!p.el) {
         p.el = make('div','character'); p.dot = make('div','dot');
+        // v1.9.1: simple round photo avatar. Arms and legs are intentionally disabled.
         p.rig = make('div','avatar-rig');
-        for (const side of ['left','right']) {
-          p.rig.append(make('span',`limb arm ${side}`),make('span',`limb leg ${side}`));
-        }
         p.rig.append(p.dot);
         p.img = document.createElement('img'); p.img.alt=''; p.img.hidden=true; p.dot.append(p.img);
         p.tag = make('div','tag'); p.bubbles = make('div','bubbles');
@@ -256,7 +254,7 @@
   setInterval(()=>{
     const now=performance.now(),dt=Math.min((now-last)/1000,.1);last=now;
     if(!connected || !myId || !players.has(myId))return;
-    const p=players.get(myId),speed=.22;
+    const p=players.get(myId),speed=.11; // v1.9.1: half walking speed
     let dx=0,dy=0;
     if(active.size){
       walkRoute=[];
