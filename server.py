@@ -8,6 +8,7 @@ import re
 import secrets
 import time
 import random
+import math
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
@@ -19,6 +20,43 @@ MAX_CHAT = 80
 MAX_PLAYERS = 10
 MAX_AVATAR_BYTES = 24000
 ROOM_RE = re.compile(r'^[a-zA-Z0-9_-]{1,32}$')
+
+# v1.8: approximate map geometry; replace with polygon/tile collision masks in v2.x.
+LANDMARK_BLOCKS = (
+    (.22,.29,.19,.27), (.32,.39,.30,.37), (.55,.64,.22,.32),
+    (.69,.78,.29,.38), (.78,.87,.34,.43), (.17,.29,.48,.57),
+    (.76,.88,.49,.57), (.23,.32,.64,.75), (.76,.86,.64,.75),
+)
+
+def blocked(x, y):
+    if not (.025 <= x <= .975 and .245 <= y <= .81):
+        return True
+    bridge = abs(y-.475) < .023 or abs(y-.578) < .020
+    if not bridge and (abs(x-(.36+.012*math.sin(15*y))) < .014
+                       or abs(x-(.685+.016*math.sin(17*y))) < .015):
+        return True
+    return any(l <= x <= r and t <= y <= b for l,r,t,b in LANDMARK_BLOCKS)
+
+def can_build(x, y, homes, owner_id, room=None):
+    if blocked(x,y) or not (.29 <= y <= .755):
+        return False
+    if abs(y-.473)<.031 or abs(y-.58)<.030:
+        return False
+    if room and any(math.hypot(x-p['x'],y-p['y']) < .055 for p in room.values()):
+        return False
+    for hid,h in homes.items():
+        if hid != owner_id and math.hypot(x-h['x'],y-h['y']) < .085:
+            return False
+    return True
+
+def segment_passable(x1,y1,x2,y2,homes=None):
+    d=math.hypot(x2-x1,y2-y1)
+    for i in range(1,max(2,math.ceil(d/.005))+1):
+        t=i/max(2,math.ceil(d/.005))
+        x=x1+(x2-x1)*t; y=y1+(y2-y1)*t
+        if blocked(x,y) or (homes and any(math.hypot(x-h['x'],y-h['y']) < .032 for h in homes.values())):
+            return False
+    return True
 
 async def index(request):
     return web.FileResponse(ROOT / 'public' / 'index.html')
@@ -46,6 +84,12 @@ async def ws_handler(request):
     # Spread new participants across two rows to avoid ten dots stacking.
     spawn_x = 0.15 + (slot % 5) * 0.175
     spawn_y = 0.36 if slot < 5 else 0.64
+    # Spawn players on land and outside protected landmark footprints.
+    if blocked(spawn_x, spawn_y):
+        for candidate_y in (.41, .64, .68, .52, .72):
+            if not blocked(spawn_x,candidate_y):
+                spawn_y=candidate_y
+                break
     room[player_id] = {'ws': ws, 'x': spawn_x, 'y': spawn_y, 'name': '参加者', 'avatar': None}
 
     async def send_all(data):
@@ -92,6 +136,8 @@ async def ws_handler(request):
                 delta = max(.025, min(now - last_movement if last_movement else .05, .15))
                 if ((x-p['x'])**2 + (y-p['y'])**2) ** .5 > .65 * delta + .035:
                     continue
+                if not segment_passable(p['x'],p['y'],x,y,world['homes']):
+                    continue
                 p['x'], p['y'] = x, y
                 last_movement = now
                 await send_all({'type': 'move', 'id': player_id, 'x': x, 'y': y})
@@ -126,7 +172,8 @@ async def ws_handler(request):
                         hx = float(pos['x']); hy = float(pos['y'])
                     except (KeyError, ValueError, TypeError):
                         continue
-                    if not (.04 <= hx <= .95 and .14 <= hy <= .91):
+                    if not can_build(hx,hy,world['homes'],owner_id,room):
+                        await ws.send_json({'type':'home_error','message':'その場所は建築できないよ。草地の空き地を選んでね！'})
                         continue
                     pos = {'x':round(hx,4),'y':round(hy,4)}
                 last_home = now
