@@ -1,17 +1,17 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>水上base v2.2.1｜西条・新居浜 オンラインワールド</title><link rel="stylesheet" href="/static/style.css?v=2.2.1"></head><body><canvas id="game" aria-label="水上base 広域ワールド"></canvas>
-<div id="top"><div><strong>🌳 水上base｜西条・新居浜 オンライン v2.2.1</strong><small>125px/秒・同じワールドで会える！</small></div><div class="controls"><button id="minus">−</button><small id="scale">1.0×</small><button id="plus">＋</button><button id="home">現在地</button></div></div>
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>水上base v2.2.3｜西条・新居浜 オンラインワールド</title><link rel="stylesheet" href="/static/style.css?v=2.2.1"></head><body><canvas id="game" aria-label="水上base 広域ワールド"></canvas>
+<div id="top"><div><strong>🌳 水上base｜西条・新居浜 オンライン v2.2.3</strong><small>150px/秒・同じワールドで会える！</small></div><div class="controls"><button id="minus">−</button><small id="scale">1.0×</small><button id="plus">＋</button><button id="home">現在地</button></div></div>
 <div id="onlinebar"><span id="network">接続中…</span> <span id="people">0/10人</span> <label>名前 <input id="name" maxlength="16"></label><label class="photolabel">📷写真<input id="avatar-file" type="file" accept="image/jpeg,image/png" hidden></label><button id="avatar-remove">写真削除</button><button id="share">🔗招待URL</button></div>
 <div id="mapinfo">🗺️ 広域ラフマップ｜地理はデフォルメ・実測道路ではありません</div>
 <div id="toast"></div><canvas id="mini" width="480" height="280" title="クリックするとそのエリアまで移動ルートを設定します"></canvas>
 <div id="loc">🌿 水上塗装周辺<br><span id="coords"></span></div>
-<div id="bottom"><button id="fish">🎣 釣り</button><button id="art">🎨 共同お絵描き</button><button id="board1">📌 西条市役所へ</button><button id="board2">📌 新居浜市役所へ</button><button id="company">🏭 水上塗装へ</button><button id="dome">🏟️ 水上ドームへ</button><button id="house">🏡 家を置く</button><button id="pack">📦 家をしまう</button><span>地面クリックで道案内／WASD・矢印キー／ミニマップからも移動可能</span></div>
+<div id="bottom"><button id="board-read-saijo" type="button">📖 西条掲示板を読む</button><button id="board-read-niihama" type="button">📖 新居浜掲示板を読む</button><button id="fish">🎣 釣り</button><button id="art">🎨 共同お絵描き</button><button id="board1">📌 西条市役所へ</button><button id="board2">📌 新居浜市役所へ</button><button id="company">🏭 水上塗装へ</button><button id="dome">🏟️ 水上ドームへ</button><button id="house">🏡 家を置く</button><button id="pack">📦 家をしまう</button><span>地面クリックで道案内／WASD・矢印キー／ミニマップからも移動可能</span></div>
 <form id="chat-form"><input id="message" maxlength="80" placeholder="30秒で消えるひとことチャット" required autocomplete="off"><button type="submit">送信</button></form><div class="modal" id="modal"><div class="panel"><h2 id="modaltitle"></h2><p id="modaldesc"></p><div id="modalbody"></div><div class="act"><button class="secondary" id="close">閉じる</button></div></div></div><div id="crop-dialog" class="crop-backdrop" hidden><div class="crop-card" role="dialog" aria-modal="true" aria-label="アイコンを切り抜く"><h2>アイコンを切り抜く</h2><p>写真を指で動かして、丸の中に好きな部分を合わせてね。</p><canvas id="crop-preview" width="300" height="300" aria-label="画像をドラッグして位置調整"></canvas><label class="zoom-label">拡大 <input id="zoom" type="range" min="1" max="3" step="0.01" value="1"></label><div class="crop-actions"><button type="button" id="crop-cancel">キャンセル</button><button type="button" id="crop-save">この画像で決定</button></div></div></div>
 
 <div id="art-dialog" class="art-backdrop" hidden><div class="art-card" role="dialog" aria-modal="true" aria-label="みんなのお絵描き"><div class="art-header"><h2>🎨 みんなのお絵描き</h2><button type="button" id="art-close" aria-label="閉じる">×</button></div><p>3色の鉛筆で自由に描こう。みんなの線がリアルタイムで見えるよ！</p><div class="art-tools"><button class="art-color selected" data-color="#e24b45" type="button" aria-label="赤" title="赤">🔴</button><button class="art-color" data-color="#326fcb" type="button" aria-label="青" title="青">🔵</button><button class="art-color" data-color="#242b36" type="button" aria-label="黒" title="黒">⚫</button><button type="button" id="art-clear" class="art-clear">まっさらにする</button></div><canvas id="draw-canvas" width="720" height="430" aria-label="共同お絵描きキャンバス"></canvas><small>試作版：サーバー再起動で絵は消える場合があります。</small></div></div>
 <div id="board-dialog" class="board-backdrop" hidden>
   <section class="board-card" role="dialog" aria-modal="true" aria-labelledby="board-title">
     <div class="board-header"><div><small>水上base・町の伝言板</small><h2 id="board-title">📌 掲示板</h2></div><button type="button" id="board-close" aria-label="掲示板を閉じる">×</button></div>
-    <p class="board-help">140文字と画像3枚まで。投稿者名・投稿日時が表示されるよ。投稿は全ルーム共通。</p>
+    <p class="board-help" id="board-help">140文字と画像3枚まで。投稿者名・投稿日時が表示されるよ。投稿は全ルーム共通。</p>
     <form id="board-form" class="board-form">
       <label for="board-comment">新しい投稿</label>
       <textarea id="board-comment" maxlength="140" rows="3" placeholder="今日は駅前で待ち合わせ！ など"></textarea>
@@ -26,4 +26,4 @@
   </section>
 </div>
 
-<script src="/static/app.js?v=2.2.1"></script></body></html>
+<script src="/static/app.js?v=2.2.3"></script></body></html>

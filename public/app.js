@@ -2,7 +2,7 @@
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
 const canvas=$('game');const ctx=canvas.getContext('2d');const mini=$('mini');const mc=mini.getContext('2d');
-const W=7800,H=4800,CH=600,SPEED=125,CELL=55;
+const W=7800,H=4800,CH=600,SPEED=150,CELL=55;
 const params=new URLSearchParams(location.search);
 const room=/^[\w-]{1,32}$/.test(params.get('room')||'')?params.get('room'):'main';
 const password=params.get('password')||'';
@@ -338,15 +338,31 @@ drawCanvas.addEventListener('pointermove',e=>{if(!drawing)return;const p=drawPoi
   const boardStatus=(message,error=false)=>{$('board-status').textContent=message;$('board-status').style.color=error?'#b04b42':'#287a58';};
   const stamp=at=>new Date(at).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
   const boardLink=post=>`${location.origin}/?board=${encodeURIComponent(post.board)}&post=${encodeURIComponent(post.id)}`;
+  function canPostAtHall(board){
+    const hall=hubs.find(h=>h.board===board);
+    return !!hall && Math.hypot(avatar.x-hall.x,avatar.y-(hall.y+55))<=380;
+  }
+  function updateBoardPermission(){
+    if(!activeBoard)return;
+    const canPost=canPostAtHall(activeBoard);
+    $('board-form').hidden=!canPost;
+    $('board-form').style.display=canPost?'':'none';
+    $('board-help').textContent=canPost
+      ?'市役所に到着！140文字と画像3枚まで投稿できるで。投稿は全ルーム共通。'
+      :'📖 閲覧モード：どこからでも読めるで！書き込みはこの市役所の前でできるよ。';
+  }
   async function openBoard(board){
     if(!boardLabels[board])return;
     activeBoard=board;boardDialog.hidden=false;
     $('board-title').textContent=`📌 ${boardLabels[board]} 掲示板`;
     boardComment.value='';boardFiles.value='';boardFilesSelected=[];previewBoardFiles();boardStatus('');
+    updateBoardPermission();
     await refreshBoard();
   }
   function closeBoard(){boardDialog.hidden=true;activeBoard=null;}
   document.querySelectorAll('[data-board]').forEach(button=>button.addEventListener('click',()=>openBoard(button.dataset.board)));
+  $('board-read-saijo').addEventListener('click',()=>openBoard('saijo'));
+  $('board-read-niihama').addEventListener('click',()=>openBoard('niihama'));
   $('board-close').addEventListener('click',closeBoard);
   boardDialog.addEventListener('pointerdown',e=>{if(e.target===boardDialog)closeBoard();});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!boardDialog.hidden)closeBoard();});
@@ -405,6 +421,10 @@ drawCanvas.addEventListener('pointermove',e=>{if(!drawing)return;const p=drawPoi
   $('board-more').addEventListener('click',()=>{if(boardNextBefore)refreshBoard(boardNextBefore);});
   $('board-form').addEventListener('submit',async e=>{
     e.preventDefault();if(!activeBoard)return;
+    if(!canPostAtHall(activeBoard)){
+      updateBoardPermission();
+      return boardStatus('書き込みは市役所の前でお願いね。',true);
+    }
     const text=boardComment.value.trim();
     if(Array.from(text).length>140||(!text&&!boardFilesSelected.length))return boardStatus('コメント140文字以内、または画像を選んでね。',true);
     const button=$('board-submit');button.disabled=true;boardStatus('画像の軽量化・投稿中…');
